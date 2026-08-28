@@ -144,6 +144,53 @@ func TestRuntimeProcessMutationIsVisibleAcrossInvocations(t *testing.T) {
 	}
 }
 
+func TestReconciledProcessRemovalReleasesOwnedVRAM(t *testing.T) {
+	catalog := loadCatalog(t)
+	cfg := compose(t, catalog, config.Spec{Devices: []config.DeviceRequest{{
+		Profile: "rtx4090-24gb",
+		UsedMiB: 512,
+	}}})
+	bundle := requireBundle(t)
+	configPath, overridesPath := writeConfig(t, cfg)
+	client := control.New(bundle.Control(), configPath, overridesPath)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+
+	device := cfg.Devices[0]
+	nonProcessUsed := uint64(512) * mib
+	processes := []control.Process{{PID: 3501, Type: "C", Name: "managed-worker", UsedMemoryMiB: 1024, SMUtil: 68}}
+	if err := client.SetProcessesReconciled(ctx, "0", processes, device.Memory.TotalBytes, device.Memory.ReservedBytes, nonProcessUsed); err != nil {
+		t.Fatal(err)
+	}
+
+	rows := queryGPUs(t, bundle, configPath, overridesPath, false)
+	if got := strings.TrimSpace(rows[0][4]); got != "1536" {
+		t.Fatalf("memory.used with process=%q want 1536; row=%v", got, rows[0])
+	}
+	out, err := runSMI(bundle, configPath, overridesPath, "pmon", "-c", "1")
+	if err != nil {
+		t.Fatalf("pmon with managed process: %v\n%s", err, out)
+	}
+	if parsed := parseManagerPMon(t, out); parsed[processKey{pid: 3501, deviceID: "CUDA0"}] != 68 {
+		t.Fatalf("managed process missing from pmon: %v\n%s", parsed, out)
+	}
+
+	if err := client.SetProcessesReconciled(ctx, "0", nil, device.Memory.TotalBytes, device.Memory.ReservedBytes, nonProcessUsed); err != nil {
+		t.Fatal(err)
+	}
+	rows = queryGPUs(t, bundle, configPath, overridesPath, false)
+	if got := strings.TrimSpace(rows[0][4]); got != "512" {
+		t.Fatalf("memory.used after process removal=%q want 512; row=%v", got, rows[0])
+	}
+	out, err = runSMI(bundle, configPath, overridesPath, "pmon", "-c", "1")
+	if err != nil {
+		t.Fatalf("pmon after managed process removal: %v\n%s", err, out)
+	}
+	if parsed := parseManagerPMon(t, out); len(parsed) != 0 {
+		t.Fatalf("pmon retained removed process: %v\n%s", parsed, out)
+	}
+}
+
 func TestNonPMonCommandsStillUseRealNvidiaSMI(t *testing.T) {
 	catalog := loadCatalog(t)
 	cfg := compose(t, catalog, config.Spec{Devices: []config.DeviceRequest{{Profile: "rtx4090-24gb"}}})
