@@ -22,7 +22,7 @@ The build runs in Docker and produces a local, ignored `.runtime/` tree:
 └── licenses/
 ```
 
-The native build contract is recorded in `runtime/pins.env`: the exact NVIDIA `k8s-test-infra` revision, upstream build Go version, immutable Docker base-image digests, dated Debian snapshot, exact top-level Debian package versions, expected NVIDIA repository-key fingerprint, and `nvidia-utils` package version. The build rejects a downloaded NVIDIA signing key whose full fingerprint does not match the pin before trusting the repository.
+The native build contract is recorded in `runtime/pins.env`: the exact NVIDIA `k8s-test-infra` revision, upstream build Go version, immutable Docker base-image digests, dated Debian snapshot, exact top-level Debian package versions, expected NVIDIA repository-key fingerprint, `nvidia-utils` package version, and architecture-specific SHA-256 hashes for the downloaded `nvidia-utils` package bytes. The build rejects a downloaded NVIDIA signing key whose full fingerprint does not match the pin before trusting the repository, and verifies the downloaded `.deb` with its architecture-specific SHA-256 before extraction.
 
 ## Use with a generated profile
 
