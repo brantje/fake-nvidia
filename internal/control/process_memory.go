@@ -51,6 +51,9 @@ func validatedProcessPayload(processes []Process) (string, uint64, error) {
 		}
 		processBytes += bytes
 	}
+	if processes == nil {
+		processes = []Process{}
+	}
 	payload, err := json.Marshal(processes)
 	if err != nil {
 		return "", 0, err
