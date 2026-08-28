@@ -85,3 +85,31 @@ func TestRenderBaseProfile(t *testing.T) {
 		t.Fatalf("rendered base:\n%s", data)
 	}
 }
+
+type contextExecutor struct {
+	cleanupErr error
+}
+
+func (f *contextExecutor) Execute(ctx context.Context, args []string) error {
+	if len(args) > 0 && args[0] == "cleanup" {
+		f.cleanupErr = ctx.Err()
+	}
+	return nil
+}
+
+func TestRunnerCleanupSurvivesCancelledContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	executor := &contextExecutor{}
+	doc := Document{
+		Version: 1,
+		Steps:   []Step{{After: "1s", Do: Operation{Args: []string{"reset"}}}},
+		Cleanup: []Operation{{Args: []string{"cleanup"}}},
+	}
+	if err := (Runner{Executor: executor, Clock: RealClock{}}).Run(ctx, doc); err == nil || !strings.Contains(err.Error(), "context canceled") {
+		t.Fatalf("err=%v", err)
+	}
+	if executor.cleanupErr != nil {
+		t.Fatalf("cleanup context err=%v", executor.cleanupErr)
+	}
+}
