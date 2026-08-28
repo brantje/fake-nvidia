@@ -24,6 +24,8 @@ docker buildx build \
   --build-arg "PATCHELF_VERSION=${PATCHELF_VERSION}" \
   --build-arg "NVIDIA_KEY_FINGERPRINT=${NVIDIA_KEY_FINGERPRINT}" \
   --build-arg "NVIDIA_UTILS_VERSION=${NVIDIA_UTILS_VERSION}" \
+  --build-arg "NVIDIA_UTILS_SHA256_AMD64=${NVIDIA_UTILS_SHA256_AMD64}" \
+  --build-arg "NVIDIA_UTILS_SHA256_ARM64=${NVIDIA_UTILS_SHA256_ARM64}" \
   --output "type=local,dest=${out_dir}" \
   "${repo_root}"
 
