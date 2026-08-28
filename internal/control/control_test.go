@@ -17,15 +17,18 @@ type fakeRunner struct {
 	err   error
 }
 
+// Run implements the corresponding fake-nvidia operation.
 func (f *fakeRunner) Run(_ context.Context, name string, args ...string) ([]byte, error) {
 	f.calls = append(f.calls, call{name: name, args: append([]string(nil), args...)})
 	return f.out, f.err
 }
 
+// clientWithFake implements the corresponding fake-nvidia operation.
 func clientWithFake(f *fakeRunner) *Client {
 	return &Client{Binary: "nvml-mock-ctl", ConfigFile: "/state/config.yaml", OverrideFile: "/state/overrides.yaml", Runner: f}
 }
 
+// TestSetMemoryDelegatesToUpstreamCtl verifies the corresponding behavior and regression contract.
 func TestSetMemoryDelegatesToUpstreamCtl(t *testing.T) {
 	f := &fakeRunner{}
 	c := clientWithFake(f)
@@ -38,6 +41,7 @@ func TestSetMemoryDelegatesToUpstreamCtl(t *testing.T) {
 	}
 }
 
+// TestSetUtilizationDisablesDynamicMaskForSplitValues verifies the corresponding behavior and regression contract.
 func TestSetUtilizationDisablesDynamicMaskForSplitValues(t *testing.T) {
 	f := &fakeRunner{}
 	c := clientWithFake(f)
@@ -52,6 +56,7 @@ func TestSetUtilizationDisablesDynamicMaskForSplitValues(t *testing.T) {
 	}
 }
 
+// TestSetProcessesUsesUpstreamSetScalarParsing verifies the corresponding behavior and regression contract.
 func TestSetProcessesUsesUpstreamSetScalarParsing(t *testing.T) {
 	f := &fakeRunner{}
 	c := clientWithFake(f)
@@ -64,6 +69,7 @@ func TestSetProcessesUsesUpstreamSetScalarParsing(t *testing.T) {
 	}
 }
 
+// TestAllThenDeviceMutationsPreserveUpstreamPrecedenceTargets verifies the corresponding behavior and regression contract.
 func TestAllThenDeviceMutationsPreserveUpstreamPrecedenceTargets(t *testing.T) {
 	f := &fakeRunner{}
 	c := clientWithFake(f)
@@ -84,6 +90,7 @@ func TestAllThenDeviceMutationsPreserveUpstreamPrecedenceTargets(t *testing.T) {
 	}
 }
 
+// TestFailureAndReset verifies the corresponding behavior and regression contract.
 func TestFailureAndReset(t *testing.T) {
 	f := &fakeRunner{}
 	c := clientWithFake(f)
@@ -98,5 +105,35 @@ func TestFailureAndReset(t *testing.T) {
 	}
 	if got := strings.Join(f.calls[1].args, " "); !strings.Contains(got, "reset --gpu 2") {
 		t.Fatalf("got %q", got)
+	}
+}
+
+// TestStatusOmitsGPUForAll verifies the corresponding behavior and regression contract.
+func TestStatusOmitsGPUForAll(t *testing.T) {
+	f := &fakeRunner{out: []byte("ok")}
+	c := clientWithFake(f)
+	got, err := c.Status(context.Background(), "all")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "ok" {
+		t.Fatalf("output=%q", got)
+	}
+	want := []string{"--file", "/state/overrides.yaml", "--config", "/state/config.yaml", "status"}
+	if !reflect.DeepEqual(f.calls[0].args, want) {
+		t.Fatalf("args=%v want=%v", f.calls[0].args, want)
+	}
+}
+
+// TestStatusKeepsGPUForSpecificTarget verifies the corresponding behavior and regression contract.
+func TestStatusKeepsGPUForSpecificTarget(t *testing.T) {
+	f := &fakeRunner{}
+	c := clientWithFake(f)
+	if _, err := c.Status(context.Background(), "2"); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"--file", "/state/overrides.yaml", "--config", "/state/config.yaml", "status", "--gpu", "2"}
+	if !reflect.DeepEqual(f.calls[0].args, want) {
+		t.Fatalf("args=%v want=%v", f.calls[0].args, want)
 	}
 }
