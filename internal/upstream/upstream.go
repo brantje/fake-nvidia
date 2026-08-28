@@ -8,6 +8,15 @@ const (
 	ConfigurationPath  = "docs/configuration.md"
 	ControlPath        = "docs/nvml-mock-ctl.md"
 	DefaultOverrideTTL = "1s"
+
+	// UpstreamGoVersion is the builder version used by the pinned upstream
+	// Mock NVML deployment and by fake-nvidia's Phase 2 runtime build.
+	UpstreamGoVersion = "1.26.6"
+
+	// NvidiaSMIPackage and NvidiaSMIVersion identify the real NVIDIA userspace
+	// utility paired with Mock NVML by the pinned upstream deployment.
+	NvidiaSMIPackage = "nvidia-utils-580"
+	NvidiaSMIVersion = "580.65.06-0ubuntu1"
 )
 
 // OverrideLayers documents the merge order implemented by the pinned
