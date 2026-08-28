@@ -7,8 +7,8 @@ import (
 	"testing"
 )
 
-// TestValidateRequiresPhase2Artifacts verifies the bundle contract.
-func TestValidateRequiresPhase2Artifacts(t *testing.T) {
+// TestValidateRequiresRuntimeArtifacts verifies the bundle contract.
+func TestValidateRequiresRuntimeArtifacts(t *testing.T) {
 	root := t.TempDir()
 	b := New(root)
 	if err := b.Validate(); err == nil {
@@ -19,6 +19,7 @@ func TestValidateRequiresPhase2Artifacts(t *testing.T) {
 		mode os.FileMode
 	}{
 		{path: b.NvidiaSMI(), mode: 0o755},
+		{path: b.RealNvidiaSMI(), mode: 0o755},
 		{path: b.Control(), mode: 0o755},
 		{path: filepath.Join(b.LibraryDir(), "libnvidia-ml.so.1"), mode: 0o644},
 	} {
@@ -43,6 +44,7 @@ func TestValidateRejectsNonExecutableBinaries(t *testing.T) {
 		mode os.FileMode
 	}{
 		{path: b.NvidiaSMI(), mode: 0o644},
+		{path: b.RealNvidiaSMI(), mode: 0o755},
 		{path: b.Control(), mode: 0o755},
 		{path: filepath.Join(b.LibraryDir(), "libnvidia-ml.so.1"), mode: 0o644},
 	} {
