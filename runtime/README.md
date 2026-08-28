@@ -71,10 +71,12 @@ Upstream intentionally treats process records and device memory counters as inde
 ## Verification
 
 ```bash
-make phase2
+make phase3
 ```
 
-The native compatibility suite now covers both Phase 2 discovery and Phase 3 process telemetry. It verifies single/multiple/mixed GPU discovery; baseline `nvidia-smi`, `-L`, and `-q`; LlamaCPP-Manager's discovery flow; the exact compute-app query; both supported `pmon` forms; multiple processes; one PID on multiple GPUs; runtime process changes; empty process state; non-`pmon` delegation to the real NVIDIA binary; and reconciled process-owned VRAM accounting.
+The native compatibility suite covers both Phase 2 discovery and Phase 3 process telemetry. It verifies single/multiple/mixed GPU discovery; baseline `nvidia-smi`, `-L`, and `-q`; LlamaCPP-Manager's discovery flow; the exact compute-app query; both supported `pmon` forms; multiple processes; one PID on multiple GPUs; runtime process changes; empty process state; non-`pmon` delegation to the real NVIDIA binary; and reconciled process-owned VRAM accounting.
+
+`make phase2` remains as a backward-compatible alias for the same native suite.
 
 ## Safety and phase boundary
 
