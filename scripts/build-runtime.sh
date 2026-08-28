@@ -30,6 +30,7 @@ docker buildx build \
 mkdir -p "${out_dir}/config"
 
 test -x "${out_dir}/bin/nvidia-smi"
+test -x "${out_dir}/bin/nvidia-smi.real"
 test -x "${out_dir}/bin/nvml-mock-ctl"
 test -f "${out_dir}/lib/libnvidia-ml.so.1"
 
