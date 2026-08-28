@@ -1,0 +1,12 @@
+{
+  "id": "t4-16gb",
+  "name": "NVIDIA T4",
+  "architecture": "turing",
+  "compute_capability": {"major": 7, "minor": 5},
+  "total_memory_mib": 16384,
+  "reserved_memory_mib": 300,
+  "temperature_c": 30,
+  "power_draw_mw": 12000,
+  "source": "upstream",
+  "upstream_config": "pkg/gpu/mocknvml/configs/mock-nvml-config-t4.yaml"
+}

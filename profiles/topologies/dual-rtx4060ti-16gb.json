@@ -1,0 +1,7 @@
+{
+  "id": "dual-rtx4060ti-16gb",
+  "devices": [
+    {"profile": "rtx4060ti-16gb"},
+    {"profile": "rtx4060ti-16gb"}
+  ]
+}
