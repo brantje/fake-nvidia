@@ -65,21 +65,6 @@ jobs:
       - name: Verify Docker buildx
         run: docker buildx version
 
-      - name: Resolve NVIDIA package checksums
-        run: |
-          for repo_arch in x86_64 sbsa; do
-            echo "--- ${repo_arch} ---"
-            curl -fsSL "https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/${repo_arch}/Packages.gz" |
-              gzip -dc |
-              awk '
-                BEGIN { RS=""; FS="\n" }
-                /^Package: nvidia-utils-580$/ && $0 ~ /^Version: 580\.65\.06-0ubuntu1$/m {
-                  for (i = 1; i <= NF; i++) {
-                    if ($i ~ /^(Filename|SHA256): /) print $i
-                  }
-                }'
-          done
-
       - name: Build pinned Mock NVML runtime
         run: make runtime
 
