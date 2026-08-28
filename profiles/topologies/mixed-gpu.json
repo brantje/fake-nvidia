@@ -1,0 +1,9 @@
+{
+  "id": "mixed-gpu",
+  "devices": [
+    {"profile": "rtx4060ti-16gb", "used_mib": 2048, "gpu_util": 15, "memory_util": 10},
+    {"profile": "rtx4090-24gb", "used_mib": 4096, "gpu_util": 35, "memory_util": 25},
+    {"profile": "t4-16gb", "used_mib": 1024, "gpu_util": 5, "memory_util": 4},
+    {"profile": "l40s-48gb", "used_mib": 8192, "gpu_util": 55, "memory_util": 45}
+  ]
+}

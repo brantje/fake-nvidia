@@ -1,0 +1,11 @@
+{
+  "id": "rtx4060ti-16gb",
+  "name": "NVIDIA GeForce RTX 4060 Ti",
+  "architecture": "ada_lovelace",
+  "compute_capability": {"major": 8, "minor": 9},
+  "total_memory_mib": 16384,
+  "reserved_memory_mib": 256,
+  "temperature_c": 35,
+  "power_draw_mw": 18000,
+  "source": "fake-nvidia"
+}

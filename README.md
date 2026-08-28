@@ -4,7 +4,7 @@
 
 It is intended for software that normally discovers and monitors NVIDIA GPUs through NVML, `nvidia-smi`, CUDA device APIs, container runtime injection, and GPU process telemetry. The primary initial consumer is LlamaCPP-Manager, but the project must remain generic and must not require consumer applications to contain a special "fake GPU" code path.
 
-> **Status:** planning/bootstrap. The implementation does not exist yet. Track progress in the repository issues.
+> **Status:** Phase 1 implementation in progress. GPU profile composition and upstream runtime-state integration are available on the Phase 1 branch; native Mock NVML / `nvidia-smi` packaging follows in Phase 2.
 
 ## Why
 
@@ -71,6 +71,70 @@ Simulated utilization, memory pressure, timing, and throughput are test inputsâ€
 `fake-nvidia` is a **Go project**. All CLIs, orchestration, profile/config handling, scenario execution, integration helpers, test harnesses, and the optional fake `llama-server` are implemented in Go.
 
 C/CGo is reserved for the narrow NVIDIA-compatible native ABI surface where necessary, such as Mock NVML/Mock CUDA shared-library integration. Core behavior must not be split into Python, Rust, Node.js, or other language-specific services.
+
+## Phase 1 profile/configuration tool
+
+The Phase 1 CLI renders upstream-compatible Mock NVML YAML without requiring a GPU:
+
+```bash
+go run ./cmd/fake-nvidia profiles
+go run ./cmd/fake-nvidia topologies
+
+go run ./cmd/fake-nvidia render \
+  --profile rtx4060ti-16gb \
+  --count 2 \
+  --vram-mib 16384
+
+go run ./cmd/fake-nvidia render \
+  --device rtx4060ti-16gb@16384 \
+  --device rtx4090-24gb@24576
+
+go run ./cmd/fake-nvidia render --topology mixed-gpu
+```
+
+For full per-device state, including used VRAM, utilization, process records, temperature/power, and failure injection, use a strict JSON spec:
+
+```json
+{
+  "system": {
+    "driver_version": "580.173.02",
+    "cuda_version": "13.0"
+  },
+  "devices": [
+    {
+      "profile": "rtx4090-24gb",
+      "vram_mib": 24576,
+      "used_mib": 4096,
+      "gpu_util": 72,
+      "memory_util": 31,
+      "processes": [
+        {
+          "pid": 1234,
+          "type": "C",
+          "name": "llama-server",
+          "used_memory_mib": 2048,
+          "sm_util": 60
+        }
+      ],
+      "failure": {
+        "mode": "lost",
+        "after_calls": 7,
+        "xid": 79
+      }
+    }
+  ]
+}
+```
+
+Render it with:
+
+```bash
+go run ./cmd/fake-nvidia render --spec ./config.json --output ./mock-nvml.yaml
+```
+
+Built-in cards currently include RTX 4060 Ti 16 GB, RTX 4090 24 GB, T4 16 GB, L40S 48 GB, A100 40 GB, and H100 80 GB. T4/L40S/A100/H100 are tied to the pinned upstream Mock NVML profile sources; see [`UPSTREAM.md`](UPSTREAM.md).
+
+Runtime mutation is intentionally delegated to upstream `nvml-mock-ctl`, including its locking, atomic override writes, merge precedence, and cross-process reload behavior. `fake-nvidia` does not maintain a second runtime-state database or daemon.
 
 ## Upstream foundation
 

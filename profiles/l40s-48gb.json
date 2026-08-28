@@ -1,0 +1,12 @@
+{
+  "id": "l40s-48gb",
+  "name": "NVIDIA L40S",
+  "architecture": "ada_lovelace",
+  "compute_capability": {"major": 8, "minor": 9},
+  "total_memory_mib": 49152,
+  "reserved_memory_mib": 512,
+  "temperature_c": 32,
+  "power_draw_mw": 45000,
+  "source": "upstream",
+  "upstream_config": "pkg/gpu/mocknvml/configs/mock-nvml-config-l40s.yaml"
+}

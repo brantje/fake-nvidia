@@ -1,0 +1,11 @@
+{
+  "id": "rtx4090-24gb",
+  "name": "NVIDIA GeForce RTX 4090",
+  "architecture": "ada_lovelace",
+  "compute_capability": {"major": 8, "minor": 9},
+  "total_memory_mib": 24576,
+  "reserved_memory_mib": 512,
+  "temperature_c": 35,
+  "power_draw_mw": 25000,
+  "source": "fake-nvidia"
+}

@@ -1,0 +1,12 @@
+{
+  "id": "a100-40gb",
+  "name": "NVIDIA A100-SXM4-40GB",
+  "architecture": "ampere",
+  "compute_capability": {"major": 8, "minor": 0},
+  "total_memory_mib": 40960,
+  "reserved_memory_mib": 583,
+  "temperature_c": 33,
+  "power_draw_mw": 72000,
+  "source": "upstream",
+  "upstream_config": "pkg/gpu/mocknvml/configs/mock-nvml-config-a100.yaml"
+}
