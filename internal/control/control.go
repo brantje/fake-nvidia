@@ -71,6 +71,9 @@ func (c *Client) SetProcesses(ctx context.Context, target string, processes []Pr
 			return fmt.Errorf("process %d: %w", i, err)
 		}
 	}
+	if processes == nil {
+		processes = []Process{}
+	}
 	payload, err := json.Marshal(processes)
 	if err != nil {
 		return err
