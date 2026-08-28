@@ -20,8 +20,12 @@ type Bundle struct {
 // New returns a runtime bundle rooted at root.
 func New(root string) Bundle { return Bundle{Root: root} }
 
-// NvidiaSMI returns the bundled nvidia-smi path.
+// NvidiaSMI returns the bundled nvidia-smi compatibility entry point.
 func (b Bundle) NvidiaSMI() string { return filepath.Join(b.Root, "bin", "nvidia-smi") }
+
+// RealNvidiaSMI returns the untouched NVIDIA nvidia-smi binary used for all
+// commands outside the narrow pmon compatibility surface.
+func (b Bundle) RealNvidiaSMI() string { return filepath.Join(b.Root, "bin", "nvidia-smi.real") }
 
 // Control returns the bundled nvml-mock-ctl path.
 func (b Bundle) Control() string { return filepath.Join(b.Root, "bin", "nvml-mock-ctl") }
@@ -29,7 +33,7 @@ func (b Bundle) Control() string { return filepath.Join(b.Root, "bin", "nvml-moc
 // LibraryDir returns the directory containing libnvidia-ml.so.
 func (b Bundle) LibraryDir() string { return filepath.Join(b.Root, "lib") }
 
-// Validate checks that the minimum Phase 2 runtime artifacts are present and usable.
+// Validate checks that the minimum fake-nvidia runtime artifacts are present and usable.
 func (b Bundle) Validate() error {
 	if strings.TrimSpace(b.Root) == "" {
 		return errors.New("runtime bundle root is required")
@@ -39,6 +43,7 @@ func (b Bundle) Validate() error {
 		executable bool
 	}{
 		{path: b.NvidiaSMI(), executable: true},
+		{path: b.RealNvidiaSMI(), executable: true},
 		{path: b.Control(), executable: true},
 		{path: filepath.Join(b.LibraryDir(), "libnvidia-ml.so.1")},
 	} {
