@@ -49,6 +49,7 @@ type Catalog struct {
 	topologies map[string]Topology
 }
 
+// LoadCatalog implements the corresponding fake-nvidia operation.
 func LoadCatalog() (*Catalog, error) {
 	c := &Catalog{profiles: map[string]Profile{}, topologies: map[string]Topology{}}
 	profileFiles, err := fs.Glob(catalogFS, "*.json")
@@ -89,6 +90,7 @@ func LoadCatalog() (*Catalog, error) {
 	return c, nil
 }
 
+// decodeFile implements the corresponding fake-nvidia operation.
 func decodeFile(name string, dst any) error {
 	f, err := catalogFS.Open(name)
 	if err != nil {
@@ -103,6 +105,7 @@ func decodeFile(name string, dst any) error {
 	return nil
 }
 
+// validateProfile implements the corresponding fake-nvidia operation.
 func validateProfile(p Profile) error {
 	if strings.TrimSpace(p.ID) == "" {
 		return errors.New("profile id is required")
@@ -134,6 +137,7 @@ func validateProfile(p Profile) error {
 	return nil
 }
 
+// validateTopology implements the corresponding fake-nvidia operation.
 func (c *Catalog) validateTopology(topology Topology) error {
 	if strings.TrimSpace(topology.ID) == "" {
 		return errors.New("topology id is required")
@@ -153,7 +157,7 @@ func (c *Catalog) validateTopology(topology Topology) error {
 		if total <= p.ReservedMemoryMiB {
 			return fmt.Errorf("device %d total VRAM must exceed reserved VRAM", i)
 		}
-		if d.UsedMiB+p.ReservedMemoryMiB > total {
+		if d.UsedMiB > total-p.ReservedMemoryMiB {
 			return fmt.Errorf("device %d used+reserved VRAM exceeds total", i)
 		}
 		if d.GPUUtil > 100 || d.MemoryUtil > 100 {
@@ -163,16 +167,19 @@ func (c *Catalog) validateTopology(topology Topology) error {
 	return nil
 }
 
+// Profile implements the corresponding fake-nvidia operation.
 func (c *Catalog) Profile(id string) (Profile, bool) {
 	p, ok := c.profiles[id]
 	return p, ok
 }
 
+// Topology implements the corresponding fake-nvidia operation.
 func (c *Catalog) Topology(id string) (Topology, bool) {
 	t, ok := c.topologies[id]
 	return t, ok
 }
 
+// ProfileIDs implements the corresponding fake-nvidia operation.
 func (c *Catalog) ProfileIDs() []string {
 	ids := make([]string, 0, len(c.profiles))
 	for id := range c.profiles {
@@ -182,6 +189,7 @@ func (c *Catalog) ProfileIDs() []string {
 	return ids
 }
 
+// TopologyIDs implements the corresponding fake-nvidia operation.
 func (c *Catalog) TopologyIDs() []string {
 	ids := make([]string, 0, len(c.topologies))
 	for id := range c.topologies {
