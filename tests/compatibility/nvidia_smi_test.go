@@ -255,5 +255,6 @@ func assertDiscovery(t *testing.T, rows [][]string, cfg config.MockConfig) {
 			if got := strings.TrimSpace(rows[i][column]); got != want[column] {
 				t.Fatalf("row %d column %d=%q want %q; row=%v", i, column, got, want[column], rows[i])
 			}
+		}
 	}
 }
