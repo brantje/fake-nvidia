@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "base": {
+    "profile": "rtx4060ti-16gb"
+  },
+  "initial": [
+    {"args": ["gpu", "0", "memory", "reserve", "10GiB"]}
+  ],
+  "cleanup": [
+    {"args": ["reset"]}
+  ]
+}

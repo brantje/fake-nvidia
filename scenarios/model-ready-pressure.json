@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "base": {
+    "topology": "dual-rtx4060ti-16gb"
+  },
+  "steps": [
+    {
+      "name": "external-pressure-after-model-ready",
+      "event": "model-ready",
+      "do": {"args": ["gpu", "0", "memory", "reserve", "10GiB"]}
+    },
+    {
+      "name": "raise-utilization",
+      "after": "250ms",
+      "do": {"args": ["gpu", "0", "utilization", "90"]}
+    }
+  ],
+  "cleanup": [
+    {"args": ["reset"]}
+  ]
+}
