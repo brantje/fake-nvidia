@@ -14,20 +14,59 @@ func TestValidateRequiresPhase2Artifacts(t *testing.T) {
 	if err := b.Validate(); err == nil {
 		t.Fatal("expected missing-artifact error")
 	}
-	for _, path := range []string{
-		b.NvidiaSMI(),
-		b.Control(),
-		filepath.Join(b.LibraryDir(), "libnvidia-ml.so.1"),
+	for _, artifact := range []struct {
+		path string
+		mode os.FileMode
+	}{
+		{path: b.NvidiaSMI(), mode: 0o755},
+		{path: b.Control(), mode: 0o755},
+		{path: filepath.Join(b.LibraryDir(), "libnvidia-ml.so.1"), mode: 0o644},
 	} {
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		if err := os.MkdirAll(filepath.Dir(artifact.path), 0o755); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(path, []byte("fixture"), 0o755); err != nil {
+		if err := os.WriteFile(artifact.path, []byte("fixture"), artifact.mode); err != nil {
 			t.Fatal(err)
 		}
 	}
 	if err := b.Validate(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestValidateRejectsNonExecutableBinaries verifies validation catches unusable command artifacts.
+func TestValidateRejectsNonExecutableBinaries(t *testing.T) {
+	root := t.TempDir()
+	b := New(root)
+	for _, artifact := range []struct {
+		path string
+		mode os.FileMode
+	}{
+		{path: b.NvidiaSMI(), mode: 0o644},
+		{path: b.Control(), mode: 0o755},
+		{path: filepath.Join(b.LibraryDir(), "libnvidia-ml.so.1"), mode: 0o644},
+	} {
+		if err := os.MkdirAll(filepath.Dir(artifact.path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(artifact.path, []byte("fixture"), artifact.mode); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := b.Validate(); err == nil || !strings.Contains(err.Error(), "not executable") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
+// TestValidateRejectsDirectoryArtifacts verifies validation requires regular files.
+func TestValidateRejectsDirectoryArtifacts(t *testing.T) {
+	root := t.TempDir()
+	b := New(root)
+	if err := os.MkdirAll(b.NvidiaSMI(), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.Validate(); err == nil || !strings.Contains(err.Error(), "not a regular file") {
+		t.Fatalf("err=%v", err)
 	}
 }
 
