@@ -6,12 +6,16 @@ import (
 	"strconv"
 )
 
+// RenderYAML implements the corresponding fake-nvidia operation.
 func RenderYAML(cfg MockConfig) ([]byte, error) {
 	if cfg.Version == "" {
 		return nil, fmt.Errorf("config version is required")
 	}
 	if len(cfg.Devices) == 0 {
 		return nil, fmt.Errorf("at least one device is required")
+	}
+	if len(cfg.Devices) > maxDevices {
+		return nil, fmt.Errorf("device count %d exceeds Mock NVML limit %d", len(cfg.Devices), maxDevices)
 	}
 	var b bytes.Buffer
 	q := strconv.Quote
@@ -26,6 +30,7 @@ func RenderYAML(cfg MockConfig) ([]byte, error) {
 	b.WriteString("devices:\n")
 	for _, d := range cfg.Devices {
 		fmt.Fprintf(&b, "  - index: %d\n", d.Index)
+		fmt.Fprintf(&b, "    minor_number: %d\n", d.Index)
 		fmt.Fprintf(&b, "    uuid: %s\n", q(d.UUID))
 		fmt.Fprintf(&b, "    name: %s\n", q(d.Name))
 		fmt.Fprintf(&b, "    architecture: %s\n", q(d.Architecture))
