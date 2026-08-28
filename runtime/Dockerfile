@@ -22,6 +22,15 @@ RUN mkdir -p /out/bin /out/lib /out/licenses \
     && go build -mod=vendor -o /out/bin/nvml-mock-ctl ./cmd/nvml-mock-ctl \
     && cp LICENSE /out/licenses/k8s-test-infra-APACHE-2.0.txt
 
+FROM golang:${UPSTREAM_GO_VERSION}-bookworm@${GOLANG_IMAGE_DIGEST} AS fake_nvidia
+WORKDIR /src
+COPY go.mod ./
+COPY cmd/nvidia-smi-wrapper/ ./cmd/nvidia-smi-wrapper/
+COPY internal/nvmlpmon/ ./internal/nvmlpmon/
+COPY internal/pmon/ ./internal/pmon/
+RUN mkdir -p /out/bin \
+    && CGO_ENABLED=1 go build -trimpath -ldflags='-s -w' -o /out/bin/nvidia-smi ./cmd/nvidia-smi-wrapper
+
 FROM debian:bookworm-20260824-slim@${DEBIAN_IMAGE_DIGEST} AS nvidia_smi
 ARG DEBIAN_SNAPSHOT=20260828T000000Z
 ARG CA_CERTIFICATES_VERSION=20250419~deb12u1
@@ -68,12 +77,13 @@ RUN set -eux; \
     echo "${nvidia_utils_sha256}  ${deb}" | sha256sum -c -; \
     dpkg-deb -x "${deb}" /tmp/nvidia-utils; \
     mkdir -p /out/bin; \
-    cp /tmp/nvidia-utils/usr/bin/nvidia-smi /out/bin/nvidia-smi; \
-    chmod 0755 /out/bin/nvidia-smi; \
-    patchelf --set-rpath '$ORIGIN/../lib' /out/bin/nvidia-smi
+    cp /tmp/nvidia-utils/usr/bin/nvidia-smi /out/bin/nvidia-smi.real; \
+    chmod 0755 /out/bin/nvidia-smi.real; \
+    patchelf --set-rpath '$ORIGIN/../lib' /out/bin/nvidia-smi.real
 
 FROM scratch AS export
 COPY --from=mocknvml /out/ /
 COPY --from=nvidia_smi /out/ /
+COPY --from=fake_nvidia /out/ /
 COPY runtime/pins.env /pins.env
 COPY runtime/THIRD_PARTY_NOTICES.md /THIRD_PARTY_NOTICES.md
