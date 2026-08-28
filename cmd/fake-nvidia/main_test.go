@@ -2,11 +2,13 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"strings"
 	"testing"
 )
 
+// TestRenderRepeatedProfile verifies the corresponding behavior and regression contract.
 func TestRenderRepeatedProfile(t *testing.T) {
 	var out, errOut bytes.Buffer
 	err := run([]string{"render", "--profile", "rtx4060ti-16gb", "--count", "2"}, &out, &errOut)
@@ -18,6 +20,7 @@ func TestRenderRepeatedProfile(t *testing.T) {
 	}
 }
 
+// TestRenderPerDeviceVRAM verifies the corresponding behavior and regression contract.
 func TestRenderPerDeviceVRAM(t *testing.T) {
 	var out, errOut bytes.Buffer
 	err := run([]string{"render", "--device", "rtx4060ti-16gb@8192", "--device", "rtx4090-24gb@20480"}, &out, &errOut)
@@ -31,6 +34,7 @@ func TestRenderPerDeviceVRAM(t *testing.T) {
 	}
 }
 
+// TestRenderSpecFile verifies the corresponding behavior and regression contract.
 func TestRenderSpecFile(t *testing.T) {
 	dir := t.TempDir()
 	path := dir + "/spec.json"
@@ -46,5 +50,22 @@ func TestRenderSpecFile(t *testing.T) {
 		if !strings.Contains(out.String(), want) {
 			t.Fatalf("missing %q\n%s", want, out.String())
 		}
+	}
+}
+
+type failingWriter struct{}
+
+// Write implements the corresponding fake-nvidia operation.
+func (failingWriter) Write([]byte) (int, error) { return 0, errors.New("write failed") }
+
+// TestCommandOutputErrorsArePropagated verifies the corresponding behavior and regression contract.
+func TestCommandOutputErrorsArePropagated(t *testing.T) {
+	for _, args := range [][]string{{"profiles"}, {"topologies"}, {"version"}, {"help"}} {
+		t.Run(args[0], func(t *testing.T) {
+			var errOut bytes.Buffer
+			if err := run(args, failingWriter{}, &errOut); err == nil || !strings.Contains(err.Error(), "write failed") {
+				t.Fatalf("err=%v", err)
+			}
+		})
 	}
 }
