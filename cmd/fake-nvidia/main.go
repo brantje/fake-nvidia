@@ -16,9 +16,13 @@ import (
 
 type stringList []string
 
-func (s *stringList) String() string     { return strings.Join(*s, ",") }
+// String formats repeated string flags for flag package diagnostics.
+func (s *stringList) String() string { return strings.Join(*s, ",") }
+
+// Set appends one occurrence of a repeated string flag.
 func (s *stringList) Set(v string) error { *s = append(*s, v); return nil }
 
+// main runs the fake-nvidia command-line entry point.
 func main() {
 	if err := run(os.Args[1:], os.Stdout, os.Stderr); err != nil {
 		fmt.Fprintln(os.Stderr, "fake-nvidia:", err)
@@ -26,9 +30,12 @@ func main() {
 	}
 }
 
+// run implements the corresponding fake-nvidia operation.
 func run(args []string, stdout, stderr io.Writer) error {
 	if len(args) == 0 {
-		usage(stderr)
+		if err := usage(stderr); err != nil {
+			return err
+		}
 		return errors.New("command is required")
 	}
 	catalog, err := profiles.LoadCatalog()
@@ -38,28 +45,34 @@ func run(args []string, stdout, stderr io.Writer) error {
 	switch args[0] {
 	case "profiles":
 		for _, id := range catalog.ProfileIDs() {
-			fmt.Fprintln(stdout, id)
+			if _, err := fmt.Fprintln(stdout, id); err != nil {
+				return err
+			}
 		}
 		return nil
 	case "topologies":
 		for _, id := range catalog.TopologyIDs() {
-			fmt.Fprintln(stdout, id)
+			if _, err := fmt.Fprintln(stdout, id); err != nil {
+				return err
+			}
 		}
 		return nil
 	case "version":
-		fmt.Fprintf(stdout, "upstream %s@%s\n", upstream.Repository, upstream.Revision)
-		return nil
+		_, err := fmt.Fprintf(stdout, "upstream %s@%s\n", upstream.Repository, upstream.Revision)
+		return err
 	case "render":
 		return runRender(catalog, args[1:], stdout, stderr)
 	case "help", "-h", "--help":
-		usage(stdout)
-		return nil
+		return usage(stdout)
 	default:
-		usage(stderr)
+		if err := usage(stderr); err != nil {
+			return err
+		}
 		return fmt.Errorf("unknown command %q", args[0])
 	}
 }
 
+// runRender implements the corresponding fake-nvidia operation.
 func runRender(catalog *profiles.Catalog, args []string, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("render", flag.ContinueOnError)
 	fs.SetOutput(stderr)
@@ -148,6 +161,7 @@ func runRender(catalog *profiles.Catalog, args []string, stdout, stderr io.Write
 	return os.WriteFile(*output, data, 0o644)
 }
 
+// parseDevice implements the corresponding fake-nvidia operation.
 func parseDevice(raw string) (config.DeviceRequest, error) {
 	profile := raw
 	var vram uint64
@@ -168,8 +182,9 @@ func parseDevice(raw string) (config.DeviceRequest, error) {
 	return config.DeviceRequest{Profile: profile, VRAMMiB: vram}, nil
 }
 
-func usage(w io.Writer) {
-	fmt.Fprint(w, `fake-nvidia Phase 1 profile/configuration tool
+// usage implements the corresponding fake-nvidia operation.
+func usage(w io.Writer) error {
+	_, err := fmt.Fprint(w, `fake-nvidia Phase 1 profile/configuration tool
 
 usage:
   fake-nvidia profiles
@@ -183,4 +198,5 @@ usage:
 render writes upstream Mock NVML YAML. Runtime mutation is deliberately delegated
 to NVIDIA's nvml-mock-ctl override mechanism.
 `)
+	return err
 }
