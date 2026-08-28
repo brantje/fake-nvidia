@@ -39,6 +39,7 @@ func TestDiscoveryQueryGolden(t *testing.T) {
 	}
 }
 
+// normalizeDiscoveryGolden removes irrelevant CSV spacing while retaining field ordering and values.
 func normalizeDiscoveryGolden(rows [][]string) string {
 	var lines []string
 	for _, row := range rows {
