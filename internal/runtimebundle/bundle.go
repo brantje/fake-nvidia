@@ -29,18 +29,28 @@ func (b Bundle) Control() string { return filepath.Join(b.Root, "bin", "nvml-moc
 // LibraryDir returns the directory containing libnvidia-ml.so.
 func (b Bundle) LibraryDir() string { return filepath.Join(b.Root, "lib") }
 
-// Validate checks that the minimum Phase 2 runtime artifacts are present.
+// Validate checks that the minimum Phase 2 runtime artifacts are present and usable.
 func (b Bundle) Validate() error {
 	if strings.TrimSpace(b.Root) == "" {
 		return errors.New("runtime bundle root is required")
 	}
-	for _, path := range []string{
-		b.NvidiaSMI(),
-		b.Control(),
-		filepath.Join(b.LibraryDir(), "libnvidia-ml.so.1"),
+	for _, artifact := range []struct {
+		path       string
+		executable bool
+	}{
+		{path: b.NvidiaSMI(), executable: true},
+		{path: b.Control(), executable: true},
+		{path: filepath.Join(b.LibraryDir(), "libnvidia-ml.so.1")},
 	} {
-		if _, err := os.Stat(path); err != nil {
-			return fmt.Errorf("runtime bundle missing %s: %w", path, err)
+		info, err := os.Stat(artifact.path)
+		if err != nil {
+			return fmt.Errorf("runtime bundle missing %s: %w", artifact.path, err)
+		}
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("runtime bundle artifact is not a regular file: %s", artifact.path)
+		}
+		if artifact.executable && info.Mode().Perm()&0o111 == 0 {
+			return fmt.Errorf("runtime bundle artifact is not executable: %s", artifact.path)
 		}
 	}
 	return nil
