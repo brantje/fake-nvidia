@@ -4,7 +4,7 @@
 
 It is intended for software that normally discovers and monitors NVIDIA GPUs through NVML, `nvidia-smi`, CUDA device APIs, container runtime injection, and GPU process telemetry. The primary initial consumer is LlamaCPP-Manager, but the project remains generic and does not require consumer applications to contain a special "fake GPU" code path.
 
-> **Status:** Phase 1 profile/state integration is merged. Phase 2 adds a reproducible pinned Mock NVML + real `nvidia-smi` runtime bundle and CPU-only command-level discovery tests.
+> **Status:** Phases 1 and 2 provide profile/state composition plus a reproducible pinned Mock NVML runtime. Phase 3 adds process accounting and parser-compatible one-shot `nvidia-smi pmon` telemetry for LlamaCPP-Manager.
 
 ## Why
 
@@ -72,7 +72,7 @@ Simulated utilization, memory pressure, timing, and throughput are test inputsâ€
 
 C/CGo is reserved for the narrow NVIDIA-compatible native ABI surface where necessary, such as Mock NVML/Mock CUDA shared-library integration. Core behavior must not be split into Python, Rust, Node.js, or other language-specific services.
 
-## Phase 1 profile/configuration tool
+## Profile/configuration tool
 
 The CLI renders upstream-compatible Mock NVML YAML without requiring a GPU:
 
@@ -113,7 +113,8 @@ For full per-device state, including used VRAM, utilization, process records, te
           "type": "C",
           "name": "llama-server",
           "used_memory_mib": 2048,
-          "sm_util": 60
+          "sm_util": 60,
+          "mem_util": 12
         }
       ],
       "failure": {
@@ -136,7 +137,7 @@ Built-in cards currently include RTX 4060 Ti 16 GB, RTX 4090 24 GB, T4 16 GB, L4
 
 Runtime mutation is intentionally delegated to upstream `nvml-mock-ctl`, including its locking, atomic override writes, merge precedence, and cross-process reload behavior. `fake-nvidia` does not maintain a second runtime-state database or daemon.
 
-## Phase 2 Mock NVML runtime
+## Mock NVML runtime
 
 Build the pinned NVIDIA-facing userspace bundle with:
 
@@ -148,13 +149,16 @@ This produces ignored local artifacts under `.runtime/`:
 
 ```text
 .runtime/bin/nvidia-smi
+.runtime/bin/nvidia-smi.real
 .runtime/bin/nvml-mock-ctl
 .runtime/lib/libnvidia-ml.so
 .runtime/lib/libnvidia-ml.so.1
 .runtime/lib/libnvidia-ml.so.<version>
 ```
 
-The build compiles Mock NVML from the exact `NVIDIA/k8s-test-infra` revision in `runtime/pins.env` and extracts NVIDIA's real `nvidia-smi` from the pinned official `nvidia-utils-580` package. It does not implement a fake `nvidia-smi` parser or copy host NVIDIA drivers.
+The build compiles Mock NVML from the exact `NVIDIA/k8s-test-infra` revision in `runtime/pins.env` and extracts NVIDIA's real `nvidia-smi` from the pinned official `nvidia-utils-580` package. The untouched NVIDIA utility is stored as `nvidia-smi.real`.
+
+The `nvidia-smi` command is a narrow Go dispatcher. For ordinary discovery, CSV queries, `-L`, `-q`, compute-process enumeration, and all other non-supported-`pmon` forms, it directly delegates to `nvidia-smi.real`. It does not reimplement the general NVIDIA-SMI parser or renderer.
 
 Example:
 
@@ -173,21 +177,40 @@ nvidia-smi --query-gpu=index,uuid,name,memory.total,memory.used,utilization.gpu 
   --format=csv,noheader,nounits
 ```
 
-Run the full Phase 2 native contract suite with:
+## Phase 3 process telemetry
+
+The pinned upstream Mock NVML already exposes configured/runtime-mutated process rows through the real NVIDIA utility, so fake-nvidia preserves that path for LlamaCPP-Manager's exact process query:
 
 ```bash
-make phase2
+nvidia-smi \
+  --query-compute-apps=pid,gpu_uuid,used_memory,process_name \
+  --format=csv,noheader,nounits
 ```
 
-The suite runs without physical NVIDIA hardware and exercises single, multiple, and mixed GPUs, `nvidia-smi`, `-L`, `-q`, LlamaCPP-Manager discovery, unsupported field rendering, and live memory/utilization mutations observed by a separate process. See [`runtime/README.md`](runtime/README.md) for the runtime layout and safety boundary.
+Upstream also implements the public `nvmlDeviceGetProcessUtilization` API, but the pinned upstream changelog documents that real `nvidia-smi pmon` reaches a separate private/internal NVIDIA entry point that is not mapped by the mock. Rather than guessing that private ABI, the dispatcher intercepts only the two one-shot forms LlamaCPP-Manager currently tries:
+
+```bash
+nvidia-smi pmon -c 1 -s u
+nvidia-smi pmon -c 1
+```
+
+The compatibility rows are populated from the public Mock NVML per-process utilization surface. GPU index, PID, SM utilization, memory utilization, encoder utilization, decoder utilization, and process name are represented; one PID may appear on multiple GPUs. All unrelated `pmon` modes are delegated to the real NVIDIA binary.
+
+The low-level `SetProcesses` control method preserves upstream process-override semantics. For fake-nvidia-managed scenarios that also own process VRAM, `SetProcessesReconciled` writes the process list plus device used/free memory in one upstream override transaction. Explicit non-process/system usage is retained, and removing a fake process releases its process-owned VRAM.
+
+Run the native discovery + process compatibility suite with:
+
+```bash
+make phase3
+```
+
+`make phase2` remains as a backward-compatible alias. The suite runs without physical NVIDIA hardware and covers discovery, baseline NVIDIA-SMI forms, the exact compute-app query, both LlamaCPP-Manager `pmon` forms, multiple processes, a PID spanning multiple GPUs, live process overrides, empty process state, delegation to `nvidia-smi.real`, and process-memory reconciliation. See [`runtime/README.md`](runtime/README.md) for the runtime layout and safety boundary.
 
 ## Upstream foundation
 
-NVIDIA Mock NVML already provides much of the low-level behavior this project needs, including configurable GPU profiles, a real `nvidia-smi` binary backed by mock NVML, runtime state overrides, `nvml-mock-ctl`, process records, dynamic metrics, failure injection, Docker examples, CDI/Kubernetes integration, and fake NVIDIA device surfaces.
+NVIDIA Mock NVML already provides much of the low-level behavior this project needs, including configurable GPU profiles, runtime state overrides, `nvml-mock-ctl`, process records, public process-utilization APIs, dynamic metrics, failure injection, Docker examples, CDI/Kubernetes integration, and fake NVIDIA device surfaces.
 
-`fake-nvidia` wraps and extends those capabilities instead of maintaining a competing NVML implementation.
-
-Known compatibility work needed after Phase 2 includes `nvidia-smi pmon`, which upstream currently does not expose through its mock despite supporting public NVML per-process utilization APIs.
+`fake-nvidia` wraps and extends those capabilities instead of maintaining a competing NVML implementation. The Phase 3 `pmon` compatibility path is intentionally narrow and removable if upstream later maps NVIDIA-SMI's private process-monitoring entry point. See [`UPSTREAM.md`](UPSTREAM.md) for the evidence and boundary.
 
 ## LlamaCPP-Manager compatibility target
 
@@ -209,9 +232,9 @@ nvidia-smi \
   --format=csv,noheader,nounits
 ```
 
-Phase 2 tests both the exact six-field parser contract and the current enriched/fallback flow. Clock values are not invented when a profile does not model them; upstream `NOT_SUPPORTED` is allowed to render as `N/A`.
+The compatibility suite tests both the exact six-field parser contract and the current enriched/fallback flow. Clock values are not invented when a profile does not model them; upstream `NOT_SUPPORTED` is allowed to render as `N/A`.
 
-GPU process accounting is a Phase 3 compatibility surface:
+GPU process accounting is tested through:
 
 ```bash
 nvidia-smi \
@@ -219,7 +242,7 @@ nvidia-smi \
   --format=csv,noheader,nounits
 ```
 
-Process utilization is also completed in Phase 3:
+Process utilization is tested through the manager's fallback sequence:
 
 ```bash
 nvidia-smi pmon -c 1 -s u
@@ -235,7 +258,6 @@ Deployment-specific injection is allowed. Consumer source-code changes are not r
 - Mock-NVML-backed `nvidia-smi`
 - Runtime mutation/control UX
 - Declarative scenario runner
-- `nvidia-smi pmon` compatibility extension
 - Docker/Compose runtime injection
 - Limited CUDA device/memory shim
 - Optional fake `llama-server`
@@ -267,4 +289,4 @@ All work must be performed on a dedicated branch and merged through a pull reque
 
 ## License
 
-A project license has not yet been selected. Any reuse or distribution of upstream NVIDIA Mock NVML/Mock CUDA code or artifacts must preserve the applicable upstream license and notices. NVIDIA `k8s-test-infra` is currently Apache-2.0 licensed. See [`runtime/THIRD_PARTY_NOTICES.md`](runtime/THIRD_PARTY_NOTICES.md) for Phase 2 native dependency notes.
+A project license has not yet been selected. Any reuse or distribution of upstream NVIDIA Mock NVML/Mock CUDA code or artifacts must preserve the applicable upstream license and notices. NVIDIA `k8s-test-infra` is currently Apache-2.0 licensed. See [`runtime/THIRD_PARTY_NOTICES.md`](runtime/THIRD_PARTY_NOTICES.md) for native dependency notes.
