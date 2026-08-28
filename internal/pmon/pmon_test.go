@@ -78,7 +78,8 @@ func TestRenderEmptyProcessListStillSucceeds(t *testing.T) {
 	if err := Render(&out, nil); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Count(out.String(), "#") != 2 {
+	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
+	if len(lines) != 2 || !strings.HasPrefix(lines[0], "#") || !strings.HasPrefix(lines[1], "#") {
 		t.Fatalf("unexpected empty output:\n%s", out.String())
 	}
 }
