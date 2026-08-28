@@ -7,6 +7,7 @@ import (
 	"github.com/brantje/fake-nvidia/profiles"
 )
 
+// testCatalog implements the corresponding fake-nvidia operation.
 func testCatalog(t *testing.T) *profiles.Catalog {
 	t.Helper()
 	c, err := profiles.LoadCatalog()
@@ -16,6 +17,7 @@ func testCatalog(t *testing.T) *profiles.Catalog {
 	return c
 }
 
+// TestComposeSingleAndArbitraryVRAM verifies the corresponding behavior and regression contract.
 func TestComposeSingleAndArbitraryVRAM(t *testing.T) {
 	cfg, err := Compose(testCatalog(t), Spec{
 		System:  System{DriverVersion: "580.173.02", CUDAVersion: "13.0"},
@@ -36,6 +38,7 @@ func TestComposeSingleAndArbitraryVRAM(t *testing.T) {
 	}
 }
 
+// TestComposeMultiAndStableIdentity verifies the corresponding behavior and regression contract.
 func TestComposeMultiAndStableIdentity(t *testing.T) {
 	devices, err := Repeated("rtx4060ti-16gb", 4, 16384)
 	if err != nil {
@@ -56,6 +59,7 @@ func TestComposeMultiAndStableIdentity(t *testing.T) {
 	}
 }
 
+// TestComposeMixedTopology verifies the corresponding behavior and regression contract.
 func TestComposeMixedTopology(t *testing.T) {
 	cfg, err := ComposeTopology(testCatalog(t), System{}, "mixed-gpu")
 	if err != nil {
@@ -73,6 +77,7 @@ func TestComposeMixedTopology(t *testing.T) {
 	}
 }
 
+// TestRenderUpstreamCompatibleFields verifies the corresponding behavior and regression contract.
 func TestRenderUpstreamCompatibleFields(t *testing.T) {
 	cfg, err := Compose(testCatalog(t), Spec{Devices: []DeviceRequest{{
 		Profile: "t4-16gb", UsedMiB: 100,
@@ -100,6 +105,7 @@ func TestRenderUpstreamCompatibleFields(t *testing.T) {
 	}
 }
 
+// TestValidationRejectsImpossibleMemory verifies the corresponding behavior and regression contract.
 func TestValidationRejectsImpossibleMemory(t *testing.T) {
 	_, err := Compose(testCatalog(t), Spec{Devices: []DeviceRequest{{Profile: "rtx4060ti-16gb", VRAMMiB: 512, UsedMiB: 300}}})
 	if err == nil {
@@ -107,6 +113,7 @@ func TestValidationRejectsImpossibleMemory(t *testing.T) {
 	}
 }
 
+// TestLoadSpecJSONExposesPerDeviceState verifies the corresponding behavior and regression contract.
 func TestLoadSpecJSONExposesPerDeviceState(t *testing.T) {
 	spec, err := LoadSpecJSON(strings.NewReader(`{
   "system":{"driver_version":"580.173.02","cuda_version":"13.0"},
@@ -133,9 +140,87 @@ func TestLoadSpecJSONExposesPerDeviceState(t *testing.T) {
 	}
 }
 
+// TestLoadSpecJSONRejectsUnknownFields verifies the corresponding behavior and regression contract.
 func TestLoadSpecJSONRejectsUnknownFields(t *testing.T) {
 	_, err := LoadSpecJSON(strings.NewReader(`{"devices":[],"typo":true}`))
 	if err == nil {
 		t.Fatal("expected unknown-field error")
+	}
+}
+
+// TestComposeTopologyRejectsNilCatalog verifies the corresponding behavior and regression contract.
+func TestComposeTopologyRejectsNilCatalog(t *testing.T) {
+	_, err := ComposeTopology(nil, System{}, "mixed-gpu")
+	if err == nil || !strings.Contains(err.Error(), "profile catalog is required") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
+// TestComposeRejectsMoreThanMockNVMLLimit verifies the corresponding behavior and regression contract.
+func TestComposeRejectsMoreThanMockNVMLLimit(t *testing.T) {
+	devices, err := Repeated("rtx4060ti-16gb", maxDevices+1, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = Compose(testCatalog(t), Spec{Devices: devices})
+	if err == nil || !strings.Contains(err.Error(), "exceeds Mock NVML limit") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
+// TestRenderRejectsMoreThanMockNVMLLimit verifies the corresponding behavior and regression contract.
+func TestRenderRejectsMoreThanMockNVMLLimit(t *testing.T) {
+	cfg := MockConfig{Version: "1.0", Devices: make([]Device, maxDevices+1)}
+	_, err := RenderYAML(cfg)
+	if err == nil || !strings.Contains(err.Error(), "exceeds Mock NVML limit") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
+// TestComposeRejectsMiBToByteOverflow verifies the corresponding behavior and regression contract.
+func TestComposeRejectsMiBToByteOverflow(t *testing.T) {
+	_, err := Compose(testCatalog(t), Spec{Devices: []DeviceRequest{{
+		Profile: "rtx4060ti-16gb",
+		VRAMMiB: maxMiB + 1,
+	}}})
+	if err == nil || !strings.Contains(err.Error(), "too large to convert") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
+// TestComposeRejectsProcessMemoryAboveDeviceUsed verifies the corresponding behavior and regression contract.
+func TestComposeRejectsProcessMemoryAboveDeviceUsed(t *testing.T) {
+	_, err := Compose(testCatalog(t), Spec{Devices: []DeviceRequest{{
+		Profile: "rtx4060ti-16gb",
+		UsedMiB: 100,
+		Processes: []Process{
+			{PID: 1, Type: "C", UsedMemoryMiB: 60},
+			{PID: 2, Type: "C", UsedMemoryMiB: 50},
+		},
+	}}})
+	if err == nil || !strings.Contains(err.Error(), "process memory exceeds device used VRAM") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
+// TestRenderIncludesDistinctMinorNumbers verifies the corresponding behavior and regression contract.
+func TestRenderIncludesDistinctMinorNumbers(t *testing.T) {
+	devices, err := Repeated("rtx4060ti-16gb", 2, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Compose(testCatalog(t), Spec{Devices: devices})
+	if err != nil {
+		t.Fatal(err)
+	}
+	yaml, err := RenderYAML(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(yaml)
+	for _, want := range []string{"  - index: 0\n    minor_number: 0", "  - index: 1\n    minor_number: 1"} {
+		if !strings.Contains(s, want) {
+			t.Fatalf("render missing %q\n%s", want, s)
+		}
 	}
 }
