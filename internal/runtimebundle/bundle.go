@@ -103,6 +103,7 @@ func (b Bundle) Environment(base []string, configPath, overridesPath string) []s
 	return out
 }
 
+// setEnv sets a value while preserving deterministic environment key ordering.
 func setEnv(env map[string]string, order *[]string, key, value string) {
 	if _, exists := env[key]; !exists {
 		*order = append(*order, key)
@@ -110,6 +111,7 @@ func setEnv(env map[string]string, order *[]string, key, value string) {
 	env[key] = value
 }
 
+// deleteEnv removes a value and its key from the deterministic environment order.
 func deleteEnv(env map[string]string, order *[]string, key string) {
 	if _, exists := env[key]; !exists {
 		return
