@@ -30,6 +30,8 @@ ARG GNUPG2_VERSION=2.2.40-1.1+deb12u2
 ARG PATCHELF_VERSION=0.14.3-1+b1
 ARG NVIDIA_KEY_FINGERPRINT=EB693B3035CD5710E231E123A4B469963BF863CC
 ARG NVIDIA_UTILS_VERSION=580.65.06-0ubuntu1
+ARG NVIDIA_UTILS_SHA256_AMD64=3e9c39d206196e4bb32d06efaf55cbd2f13e54b163928f26bd8d38b7cbba8fcc
+ARG NVIDIA_UTILS_SHA256_ARM64=25b291a8d147e545ac3152d50e2818b523782ef07c97f381e2d0478f6d8ec63e
 ARG TARGETARCH
 
 RUN set -eux; \
@@ -45,7 +47,11 @@ RUN set -eux; \
       "gnupg2=${GNUPG2_VERSION}" \
       "patchelf=${PATCHELF_VERSION}"; \
     rm -rf /var/lib/apt/lists/*; \
-    repo_arch=$(case "${TARGETARCH}" in arm64) echo sbsa;; *) echo x86_64;; esac); \
+    case "${TARGETARCH}" in \
+      arm64) repo_arch=sbsa; nvidia_utils_sha256="${NVIDIA_UTILS_SHA256_ARM64}" ;; \
+      amd64) repo_arch=x86_64; nvidia_utils_sha256="${NVIDIA_UTILS_SHA256_AMD64}" ;; \
+      *) echo "unsupported TARGETARCH: ${TARGETARCH}" >&2; exit 1 ;; \
+    esac; \
     key_url="https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/${repo_arch}/3bf863cc.pub"; \
     curl -fsSL "${key_url}" -o /tmp/nvidia.pub; \
     fingerprint=$(gpg --batch --show-keys --with-colons /tmp/nvidia.pub | awk -F: '$1 == "fpr" { print $10; exit }'); \
@@ -57,7 +63,10 @@ RUN set -eux; \
     apt-get update; \
     cd /tmp; \
     apt-get download "nvidia-utils-580=${NVIDIA_UTILS_VERSION}"; \
-    dpkg-deb -x /tmp/nvidia-utils-580*.deb /tmp/nvidia-utils; \
+    deb=$(find /tmp -maxdepth 1 -type f -name 'nvidia-utils-580_*.deb' -print -quit); \
+    test -n "${deb}"; \
+    echo "${nvidia_utils_sha256}  ${deb}" | sha256sum -c -; \
+    dpkg-deb -x "${deb}" /tmp/nvidia-utils; \
     mkdir -p /out/bin; \
     cp /tmp/nvidia-utils/usr/bin/nvidia-smi /out/bin/nvidia-smi; \
     chmod 0755 /out/bin/nvidia-smi; \
