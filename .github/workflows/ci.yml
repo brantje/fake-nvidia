@@ -45,7 +45,7 @@ jobs:
         run: go vet ./...
 
   compatibility:
-    name: Mock NVML discovery
+    name: Mock NVML compatibility
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -83,5 +83,5 @@ jobs:
       - name: Build pinned Mock NVML runtime
         run: make runtime
 
-      - name: Run nvidia-smi compatibility tests
+      - name: Run native compatibility tests
         run: make compatibility
