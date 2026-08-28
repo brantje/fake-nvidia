@@ -191,11 +191,15 @@ go test -race ./...
 go vet ./...
 ```
 
+The repository GitHub Actions workflow in `.github/workflows/ci.yml` is mandatory for every pull request targeting `main`. Its `CI / Go checks` status must complete successfully on the current PR head before merge. A failing, pending, cancelled, or skipped required CI check blocks completion.
+
+Local test runs are still required where practical because they provide faster feedback, but local success never replaces a successful GitHub Actions run.
+
 Also run repository-specific build/lint/integration commands added by the project.
 
 For compatibility changes, add tests at the lowest useful layer plus an end-to-end/command-level test when appropriate.
 
-Do not weaken tests, remove validation, or change expected behavior merely to make CI pass.
+Do not weaken tests, remove validation, skip required CI, or change expected behavior merely to make CI pass.
 
 ## Upstream dependency discipline
 
@@ -249,6 +253,7 @@ Before considering an issue implementation complete:
 - [ ] Race tests pass where applicable.
 - [ ] Vet/static checks pass where applicable.
 - [ ] Compatibility tests pass.
+- [ ] Required GitHub Actions checks pass on the current PR head.
 - [ ] CPU-only execution is preserved.
 - [ ] No real host driver state is modified.
 - [ ] Documentation/compatibility matrix is updated.
