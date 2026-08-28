@@ -1,8 +1,10 @@
 package config
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"strconv"
 	"strings"
 
@@ -12,43 +14,43 @@ import (
 const mib = uint64(1024 * 1024)
 
 type System struct {
-	DriverVersion string
-	CUDAVersion   string
+	DriverVersion string `json:"driver_version"`
+	CUDAVersion   string `json:"cuda_version"`
 }
 
 type Process struct {
-	PID           uint32
-	Type          string
-	Name          string
-	UsedMemoryMiB uint64
-	SMUtil        uint32
-	MemoryUtil    uint32
-	EncoderUtil   uint32
-	DecoderUtil   uint32
+	PID           uint32 `json:"pid"`
+	Type          string `json:"type,omitempty"`
+	Name          string `json:"name,omitempty"`
+	UsedMemoryMiB uint64 `json:"used_memory_mib,omitempty"`
+	SMUtil        uint32 `json:"sm_util,omitempty"`
+	MemoryUtil    uint32 `json:"mem_util,omitempty"`
+	EncoderUtil   uint32 `json:"enc_util,omitempty"`
+	DecoderUtil   uint32 `json:"dec_util,omitempty"`
 }
 
 type Failure struct {
-	Mode        string
-	Probability float64
-	AfterCalls  int64
-	XID         uint64
+	Mode        string  `json:"mode"`
+	Probability float64 `json:"probability,omitempty"`
+	AfterCalls  int64   `json:"after_calls,omitempty"`
+	XID         uint64  `json:"xid,omitempty"`
 }
 
 type DeviceRequest struct {
-	Profile      string
-	VRAMMiB      uint64
-	UsedMiB      uint64
-	GPUUtil      uint32
-	MemoryUtil   uint32
-	TemperatureC *int
-	PowerDrawMW  *uint32
-	Processes    []Process
-	Failure      *Failure
+	Profile      string    `json:"profile"`
+	VRAMMiB      uint64    `json:"vram_mib,omitempty"`
+	UsedMiB      uint64    `json:"used_mib,omitempty"`
+	GPUUtil      uint32    `json:"gpu_util,omitempty"`
+	MemoryUtil   uint32    `json:"memory_util,omitempty"`
+	TemperatureC *int      `json:"temperature_c,omitempty"`
+	PowerDrawMW  *uint32   `json:"power_draw_mw,omitempty"`
+	Processes    []Process `json:"processes,omitempty"`
+	Failure      *Failure  `json:"failure,omitempty"`
 }
 
 type Spec struct {
-	System  System
-	Devices []DeviceRequest
+	System  System          `json:"system"`
+	Devices []DeviceRequest `json:"devices"`
 }
 
 type MockConfig struct {
@@ -103,6 +105,23 @@ type Thermal struct {
 
 type Power struct {
 	CurrentDrawMW uint32
+}
+
+func LoadSpecJSON(r io.Reader) (Spec, error) {
+	var spec Spec
+	dec := json.NewDecoder(r)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&spec); err != nil {
+		return Spec{}, fmt.Errorf("decode spec: %w", err)
+	}
+	var extra any
+	if err := dec.Decode(&extra); err != io.EOF {
+		if err == nil {
+			return Spec{}, errors.New("decode spec: multiple JSON documents")
+		}
+		return Spec{}, fmt.Errorf("decode spec: %w", err)
+	}
+	return spec, nil
 }
 
 func Compose(catalog *profiles.Catalog, spec Spec) (MockConfig, error) {

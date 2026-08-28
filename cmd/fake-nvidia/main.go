@@ -67,6 +67,7 @@ func runRender(catalog *profiles.Catalog, args []string, stdout, stderr io.Write
 	count := fs.Int("count", 1, "number of devices when --profile is used")
 	vram := fs.Uint64("vram-mib", 0, "override VRAM MiB for --profile devices")
 	topology := fs.String("topology", "", "named topology")
+	specPath := fs.String("spec", "", "JSON spec containing system and per-device state")
 	driver := fs.String("driver-version", "580.173.02", "reported driver version")
 	cuda := fs.String("cuda-version", "13.0", "reported CUDA version")
 	output := fs.String("output", "-", "output path, or - for stdout")
@@ -89,14 +90,31 @@ func runRender(catalog *profiles.Catalog, args []string, stdout, stderr io.Write
 	if len(rawDevices) > 0 {
 		selected++
 	}
+	if *specPath != "" {
+		selected++
+	}
 	if selected != 1 {
-		return errors.New("choose exactly one of --profile, --topology, or one/more --device")
+		return errors.New("choose exactly one of --profile, --topology, --spec, or one/more --device")
 	}
 
 	system := config.System{DriverVersion: *driver, CUDAVersion: *cuda}
 	var cfg config.MockConfig
 	var err error
 	switch {
+	case *specPath != "":
+		f, openErr := os.Open(*specPath)
+		if openErr != nil {
+			return openErr
+		}
+		spec, loadErr := config.LoadSpecJSON(f)
+		closeErr := f.Close()
+		if loadErr != nil {
+			return loadErr
+		}
+		if closeErr != nil {
+			return closeErr
+		}
+		cfg, err = config.Compose(catalog, spec)
 	case *topology != "":
 		cfg, err = config.ComposeTopology(catalog, system, *topology)
 	case *profile != "":
@@ -160,6 +178,7 @@ usage:
   fake-nvidia render --profile <id> [--count N] [--vram-mib MiB]
   fake-nvidia render --device <profile[@MiB]> [--device ...]
   fake-nvidia render --topology <id>
+  fake-nvidia render --spec <config.json>
 
 render writes upstream Mock NVML YAML. Runtime mutation is deliberately delegated
 to NVIDIA's nvml-mock-ctl override mechanism.

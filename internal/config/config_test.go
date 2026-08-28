@@ -106,3 +106,36 @@ func TestValidationRejectsImpossibleMemory(t *testing.T) {
 		t.Fatal("expected memory validation error")
 	}
 }
+
+func TestLoadSpecJSONExposesPerDeviceState(t *testing.T) {
+	spec, err := LoadSpecJSON(strings.NewReader(`{
+  "system":{"driver_version":"580.173.02","cuda_version":"13.0"},
+  "devices":[{
+    "profile":"rtx4090-24gb","vram_mib":20480,"used_mib":4096,
+    "gpu_util":72,"memory_util":31,"temperature_c":49,"power_draw_mw":180000,
+    "processes":[{"pid":99,"type":"C","name":"worker","used_memory_mib":2048,"sm_util":60}],
+    "failure":{"mode":"lost","after_calls":7,"xid":79}
+  }]
+}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Compose(testCatalog(t), spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := cfg.Devices[0]
+	if d.Memory.TotalBytes != 20480*mib || d.Memory.UsedBytes != 4096*mib || d.Utilization.GPU != 72 || d.Thermal.TemperatureGPUC != 49 {
+		t.Fatalf("unexpected device: %+v", d)
+	}
+	if len(d.Processes) != 1 || d.Failure == nil || d.Failure.AfterCalls != 7 {
+		t.Fatalf("state not loaded: %+v", d)
+	}
+}
+
+func TestLoadSpecJSONRejectsUnknownFields(t *testing.T) {
+	_, err := LoadSpecJSON(strings.NewReader(`{"devices":[],"typo":true}`))
+	if err == nil {
+		t.Fatal("expected unknown-field error")
+	}
+}

@@ -5,8 +5,8 @@
   "compute_capability": {"major": 9, "minor": 0},
   "total_memory_mib": 81920,
   "reserved_memory_mib": 1024,
-  "temperature_c": 31,
-  "power_draw_mw": 80000,
+  "temperature_c": 34,
+  "power_draw_mw": 95000,
   "source": "upstream",
   "upstream_config": "pkg/gpu/mocknvml/configs/mock-nvml-config-h100.yaml"
 }
