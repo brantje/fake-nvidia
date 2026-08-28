@@ -11,7 +11,11 @@ import (
 	"github.com/brantje/fake-nvidia/profiles"
 )
 
-const mib = uint64(1024 * 1024)
+const (
+	mib        = uint64(1024 * 1024)
+	maxDevices = 8
+	maxMiB     = ^uint64(0) / mib
+)
 
 type System struct {
 	DriverVersion string `json:"driver_version"`
@@ -107,6 +111,7 @@ type Power struct {
 	CurrentDrawMW uint32
 }
 
+// LoadSpecJSON implements the corresponding fake-nvidia operation.
 func LoadSpecJSON(r io.Reader) (Spec, error) {
 	var spec Spec
 	dec := json.NewDecoder(r)
@@ -124,12 +129,16 @@ func LoadSpecJSON(r io.Reader) (Spec, error) {
 	return spec, nil
 }
 
+// Compose implements the corresponding fake-nvidia operation.
 func Compose(catalog *profiles.Catalog, spec Spec) (MockConfig, error) {
 	if catalog == nil {
 		return MockConfig{}, errors.New("profile catalog is required")
 	}
 	if len(spec.Devices) == 0 {
 		return MockConfig{}, errors.New("at least one device is required")
+	}
+	if len(spec.Devices) > maxDevices {
+		return MockConfig{}, fmt.Errorf("device count %d exceeds Mock NVML limit %d", len(spec.Devices), maxDevices)
 	}
 	system, err := normalizeSystem(spec.System)
 	if err != nil {
@@ -150,7 +159,11 @@ func Compose(catalog *profiles.Catalog, spec Spec) (MockConfig, error) {
 	return out, nil
 }
 
+// ComposeTopology implements the corresponding fake-nvidia operation.
 func ComposeTopology(catalog *profiles.Catalog, system System, topologyID string) (MockConfig, error) {
+	if catalog == nil {
+		return MockConfig{}, errors.New("profile catalog is required")
+	}
 	topology, ok := catalog.Topology(topologyID)
 	if !ok {
 		return MockConfig{}, fmt.Errorf("unknown topology %q", topologyID)
@@ -165,6 +178,7 @@ func ComposeTopology(catalog *profiles.Catalog, system System, topologyID string
 	return Compose(catalog, spec)
 }
 
+// Repeated implements the corresponding fake-nvidia operation.
 func Repeated(profile string, count int, vramMiB uint64) ([]DeviceRequest, error) {
 	if count <= 0 {
 		return nil, errors.New("count must be positive")
@@ -176,6 +190,7 @@ func Repeated(profile string, count int, vramMiB uint64) ([]DeviceRequest, error
 	return devices, nil
 }
 
+// normalizeSystem implements the corresponding fake-nvidia operation.
 func normalizeSystem(in System) (MockSystem, error) {
 	if in.DriverVersion == "" {
 		in.DriverVersion = "580.173.02"
@@ -201,24 +216,33 @@ func normalizeSystem(in System) (MockSystem, error) {
 	}, nil
 }
 
+// composeDevice implements the corresponding fake-nvidia operation.
 func composeDevice(index int, p profiles.Profile, req DeviceRequest) (Device, error) {
 	totalMiB := p.TotalMemoryMiB
 	if req.VRAMMiB != 0 {
 		totalMiB = req.VRAMMiB
 	}
+	if totalMiB > maxMiB || p.ReservedMemoryMiB > maxMiB || req.UsedMiB > maxMiB {
+		return Device{}, errors.New("VRAM value is too large to convert from MiB to bytes")
+	}
 	if totalMiB <= p.ReservedMemoryMiB {
 		return Device{}, fmt.Errorf("total VRAM %d MiB must exceed reserved VRAM %d MiB", totalMiB, p.ReservedMemoryMiB)
 	}
-	if req.UsedMiB+p.ReservedMemoryMiB > totalMiB {
+	if req.UsedMiB > totalMiB-p.ReservedMemoryMiB {
 		return Device{}, fmt.Errorf("used (%d MiB) + reserved (%d MiB) exceeds total (%d MiB)", req.UsedMiB, p.ReservedMemoryMiB, totalMiB)
 	}
 	if req.GPUUtil > 100 || req.MemoryUtil > 100 {
 		return Device{}, errors.New("utilization must be between 0 and 100")
 	}
+	var processUsedMiB uint64
 	for i, proc := range req.Processes {
 		if err := validateProcess(proc); err != nil {
 			return Device{}, fmt.Errorf("process %d: %w", i, err)
 		}
+		if processUsedMiB > req.UsedMiB || proc.UsedMemoryMiB > req.UsedMiB-processUsedMiB {
+			return Device{}, fmt.Errorf("process memory exceeds device used VRAM of %d MiB", req.UsedMiB)
+		}
+		processUsedMiB += proc.UsedMemoryMiB
 	}
 	if req.Failure != nil {
 		if err := validateFailure(*req.Failure); err != nil {
@@ -251,6 +275,7 @@ func composeDevice(index int, p profiles.Profile, req DeviceRequest) (Device, er
 	}, nil
 }
 
+// validateProcess implements the corresponding fake-nvidia operation.
 func validateProcess(p Process) error {
 	if p.PID == 0 {
 		return errors.New("pid must be positive")
@@ -264,6 +289,7 @@ func validateProcess(p Process) error {
 	return nil
 }
 
+// validateFailure implements the corresponding fake-nvidia operation.
 func validateFailure(f Failure) error {
 	switch f.Mode {
 	case "lost", "fallen_off_bus", "ecc_uncorrectable":
@@ -281,15 +307,18 @@ func validateFailure(f Failure) error {
 	return nil
 }
 
+// stableUUID implements the corresponding fake-nvidia operation.
 func stableUUID(index int) string {
 	return fmt.Sprintf("GPU-00000000-0000-0000-0000-%012x", index+1)
 }
 
+// stablePCIBusID implements the corresponding fake-nvidia operation.
 func stablePCIBusID(index int) string {
 	n := index + 1
 	return fmt.Sprintf("%04x:%02x:00.0", n/256, n%256)
 }
 
+// cloneFailure implements the corresponding fake-nvidia operation.
 func cloneFailure(f *Failure) *Failure {
 	if f == nil {
 		return nil
