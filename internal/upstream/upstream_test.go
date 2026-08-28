@@ -2,6 +2,7 @@ package upstream
 
 import "testing"
 
+// TestPinnedRevisionAndOverrideContract verifies the corresponding behavior and regression contract.
 func TestPinnedRevisionAndOverrideContract(t *testing.T) {
 	if Revision == "" || len(Revision) != 40 {
 		t.Fatalf("expected pinned 40-character revision, got %q", Revision)
