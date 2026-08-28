@@ -231,6 +231,7 @@ func Validate(doc Document) error {
 			if err != nil || d < 0 {
 				return fmt.Errorf("step %d has invalid after duration %q", i, step.After)
 			}
+		}
 		if len(step.Do.Args) == 0 {
 			return fmt.Errorf("step %d has no operation args", i)
 		}
