@@ -112,6 +112,7 @@ func TestEnvironmentCanClearMockPaths(t *testing.T) {
 	}
 }
 
+// envMap converts environment entries into a key/value map for assertions.
 func envMap(env []string) map[string]string {
 	out := make(map[string]string, len(env))
 	for _, entry := range env {
@@ -123,6 +124,7 @@ func envMap(env []string) map[string]string {
 	return out
 }
 
+// countKey counts occurrences of one environment key in the serialized environment.
 func countKey(env []string, key string) int {
 	count := 0
 	for _, entry := range env {
