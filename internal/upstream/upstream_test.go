@@ -56,13 +56,19 @@ func TestRuntimePinsMatchGoContract(t *testing.T) {
 	}
 
 	want := map[string]string{
-		"UPSTREAM_REVISION":   Revision,
-		"UPSTREAM_GO_VERSION": UpstreamGoVersion,
+		"UPSTREAM_REVISION":    Revision,
+		"UPSTREAM_GO_VERSION":  UpstreamGoVersion,
 		"NVIDIA_UTILS_VERSION": NvidiaSMIVersion,
 	}
 	for key, value := range want {
 		if got := pins[key]; got != value {
 			t.Fatalf("%s=%q want %q", key, got, value)
+		}
+	}
+	for _, key := range []string{"NVIDIA_UTILS_SHA256_AMD64", "NVIDIA_UTILS_SHA256_ARM64"} {
+		value := pins[key]
+		if len(value) != 64 || strings.Trim(value, "0123456789abcdef") != "" {
+			t.Fatalf("%s must be a lowercase 64-character SHA-256, got %q", key, value)
 		}
 	}
 }
