@@ -127,6 +127,7 @@ func TestRuntimeMutationIsVisibleToSubsequentNvidiaSMI(t *testing.T) {
 	}
 }
 
+// requireBundle loads and validates the runtime bundle configured for integration tests.
 func requireBundle(t *testing.T) runtimebundle.Bundle {
 	t.Helper()
 	root := os.Getenv("FAKE_NVIDIA_RUNTIME_DIR")
@@ -140,6 +141,7 @@ func requireBundle(t *testing.T) runtimebundle.Bundle {
 	return bundle
 }
 
+// loadCatalog loads the embedded GPU profile catalog for compatibility tests.
 func loadCatalog(t *testing.T) *profiles.Catalog {
 	t.Helper()
 	catalog, err := profiles.LoadCatalog()
@@ -149,6 +151,7 @@ func loadCatalog(t *testing.T) *profiles.Catalog {
 	return catalog
 }
 
+// compose creates a validated Mock NVML configuration or fails the current test.
 func compose(t *testing.T, catalog *profiles.Catalog, spec config.Spec) config.MockConfig {
 	t.Helper()
 	cfg, err := config.Compose(catalog, spec)
@@ -158,6 +161,7 @@ func compose(t *testing.T, catalog *profiles.Catalog, spec config.Spec) config.M
 	return cfg
 }
 
+// composeTopology creates a validated named topology or fails the current test.
 func composeTopology(t *testing.T, catalog *profiles.Catalog, id string) config.MockConfig {
 	t.Helper()
 	cfg, err := config.ComposeTopology(catalog, config.System{}, id)
@@ -167,6 +171,7 @@ func composeTopology(t *testing.T, catalog *profiles.Catalog, id string) config.
 	return cfg
 }
 
+// writeConfig writes a rendered Mock NVML configuration and returns config and override paths.
 func writeConfig(t *testing.T, cfg config.MockConfig) (string, string) {
 	t.Helper()
 	data, err := config.RenderYAML(cfg)
@@ -181,6 +186,7 @@ func writeConfig(t *testing.T, cfg config.MockConfig) (string, string) {
 	return configPath, filepath.Join(dir, "overrides.yaml")
 }
 
+// queryGPUs runs the manager-compatible discovery query, optionally trying clock enrichment first.
 func queryGPUs(t *testing.T, bundle runtimebundle.Bundle, configPath, overridesPath string, managerFlow bool) [][]string {
 	t.Helper()
 	fields := "index,uuid,name,memory.total,memory.used,utilization.gpu"
@@ -199,6 +205,7 @@ func queryGPUs(t *testing.T, bundle runtimebundle.Bundle, configPath, overridesP
 	return parseCSV(t, out)
 }
 
+// runSMI executes the bundled nvidia-smi with isolated Mock NVML environment state.
 func runSMI(bundle runtimebundle.Bundle, configPath, overridesPath string, args ...string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -214,6 +221,7 @@ func runSMI(bundle runtimebundle.Bundle, configPath, overridesPath string, args 
 	return string(out), nil
 }
 
+// parseCSV parses nvidia-smi CSV output into rows for semantic assertions.
 func parseCSV(t *testing.T, text string) [][]string {
 	t.Helper()
 	reader := csv.NewReader(strings.NewReader(strings.TrimSpace(text)))
@@ -225,6 +233,7 @@ func parseCSV(t *testing.T, text string) [][]string {
 	return rows
 }
 
+// assertDiscovery verifies discovery rows match the generated Mock NVML device state.
 func assertDiscovery(t *testing.T, rows [][]string, cfg config.MockConfig) {
 	t.Helper()
 	if len(rows) != len(cfg.Devices) {
@@ -246,6 +255,5 @@ func assertDiscovery(t *testing.T, rows [][]string, cfg config.MockConfig) {
 			if got := strings.TrimSpace(rows[i][column]); got != want[column] {
 				t.Fatalf("row %d column %d=%q want %q; row=%v", i, column, got, want[column], rows[i])
 			}
-		}
 	}
 }
