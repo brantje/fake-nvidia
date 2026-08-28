@@ -15,6 +15,7 @@ type Runner interface {
 
 type ExecRunner struct{}
 
+// Run implements the corresponding fake-nvidia operation.
 func (ExecRunner) Run(ctx context.Context, name string, args ...string) ([]byte, error) {
 	return exec.CommandContext(ctx, name, args...).CombinedOutput()
 }
@@ -37,16 +38,19 @@ type Process struct {
 	DecoderUtil   uint32 `json:"dec_util,omitempty"`
 }
 
+// New implements the corresponding fake-nvidia operation.
 func New(binary, configFile, overrideFile string) *Client {
 	return &Client{Binary: binary, ConfigFile: configFile, OverrideFile: overrideFile, Runner: ExecRunner{}}
 }
 
+// SetMemory implements the corresponding fake-nvidia operation.
 func (c *Client) SetMemory(ctx context.Context, target string, usedBytes, freeBytes uint64) error {
 	return c.run(ctx, "set", "--gpu", target,
 		"memory.used_bytes="+strconv.FormatUint(usedBytes, 10),
 		"memory.free_bytes="+strconv.FormatUint(freeBytes, 10))
 }
 
+// SetUtilization implements the corresponding fake-nvidia operation.
 func (c *Client) SetUtilization(ctx context.Context, target string, gpu, memory uint32) error {
 	if gpu > 100 || memory > 100 {
 		return errors.New("utilization must be between 0 and 100")
@@ -60,6 +64,7 @@ func (c *Client) SetUtilization(ctx context.Context, target string, gpu, memory 
 		"dynamic_metrics.utilization=null")
 }
 
+// SetProcesses implements the corresponding fake-nvidia operation.
 func (c *Client) SetProcesses(ctx context.Context, target string, processes []Process) error {
 	for i, p := range processes {
 		if err := validateProcess(p); err != nil {
@@ -73,6 +78,7 @@ func (c *Client) SetProcesses(ctx context.Context, target string, processes []Pr
 	return c.run(ctx, "set", "--gpu", target, "processes="+string(payload))
 }
 
+// SetTemperature implements the corresponding fake-nvidia operation.
 func (c *Client) SetTemperature(ctx context.Context, target string, celsius int) error {
 	if celsius < 0 || celsius > 200 {
 		return errors.New("temperature must be between 0 and 200 C")
@@ -80,6 +86,7 @@ func (c *Client) SetTemperature(ctx context.Context, target string, celsius int)
 	return c.run(ctx, "temp", "--gpu", target, strconv.Itoa(celsius))
 }
 
+// SetPower implements the corresponding fake-nvidia operation.
 func (c *Client) SetPower(ctx context.Context, target string, watts float64) error {
 	if watts < 0 || watts > 100000 {
 		return errors.New("power must be between 0 and 100000 watts")
@@ -87,6 +94,7 @@ func (c *Client) SetPower(ctx context.Context, target string, watts float64) err
 	return c.run(ctx, "power", "--gpu", target, strconv.FormatFloat(watts, 'f', -1, 64))
 }
 
+// SetFailure implements the corresponding fake-nvidia operation.
 func (c *Client) SetFailure(ctx context.Context, target, mode string, afterCalls int, xid uint64) error {
 	switch mode {
 	case "healthy", "lost", "fallen_off_bus", "ecc_uncorrectable":
@@ -106,6 +114,7 @@ func (c *Client) SetFailure(ctx context.Context, target, mode string, afterCalls
 	return c.run(ctx, args...)
 }
 
+// Reset implements the corresponding fake-nvidia operation.
 func (c *Client) Reset(ctx context.Context, target string) error {
 	if target == "" || target == "all" {
 		return c.run(ctx, "reset")
@@ -113,19 +122,22 @@ func (c *Client) Reset(ctx context.Context, target string) error {
 	return c.run(ctx, "reset", "--gpu", target)
 }
 
+// Status implements the corresponding fake-nvidia operation.
 func (c *Client) Status(ctx context.Context, target string) ([]byte, error) {
 	args := []string{"status"}
-	if target != "" {
+	if target != "" && target != "all" {
 		args = append(args, "--gpu", target)
 	}
 	return c.runOutput(ctx, args...)
 }
 
+// run implements the corresponding fake-nvidia operation.
 func (c *Client) run(ctx context.Context, args ...string) error {
 	_, err := c.runOutput(ctx, args...)
 	return err
 }
 
+// runOutput implements the corresponding fake-nvidia operation.
 func (c *Client) runOutput(ctx context.Context, args ...string) ([]byte, error) {
 	if c == nil {
 		return nil, errors.New("nil control client")
@@ -151,6 +163,7 @@ func (c *Client) runOutput(ctx context.Context, args ...string) ([]byte, error) 
 	return out, nil
 }
 
+// validateProcess implements the corresponding fake-nvidia operation.
 func validateProcess(p Process) error {
 	if p.PID == 0 {
 		return errors.New("pid must be positive")
