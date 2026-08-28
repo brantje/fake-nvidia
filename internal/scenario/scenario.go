@@ -135,8 +135,9 @@ func (r Runner) Run(ctx context.Context, doc Document) (err error) {
 		r.Clock = RealClock{}
 	}
 	defer func() {
+		cleanupCtx := context.WithoutCancel(ctx)
 		for _, op := range doc.Cleanup {
-			if cleanupErr := r.Executor.Execute(ctx, op.Args); cleanupErr != nil {
+			if cleanupErr := r.Executor.Execute(cleanupCtx, op.Args); cleanupErr != nil {
 				err = errors.Join(err, fmt.Errorf("cleanup %q: %w", strings.Join(op.Args, " "), cleanupErr))
 			}
 		}
@@ -230,7 +231,6 @@ func Validate(doc Document) error {
 			if err != nil || d < 0 {
 				return fmt.Errorf("step %d has invalid after duration %q", i, step.After)
 			}
-		}
 		if len(step.Do.Args) == 0 {
 			return fmt.Errorf("step %d has no operation args", i)
 		}
