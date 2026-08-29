@@ -11,14 +11,17 @@ type retryReleaseRegistry struct {
 	releases int
 }
 
+// Register satisfies ProcessRegistry for the cleanup retry fixture.
 func (*retryReleaseRegistry) Register(context.Context, uint32, string, []string, uint64, []float64, uint32, uint32) error {
 	return nil
 }
 
+// Resize satisfies ProcessRegistry for the cleanup retry fixture.
 func (*retryReleaseRegistry) Resize(context.Context, uint32, string, []string, uint64, []float64, uint32, uint32) error {
 	return nil
 }
 
+// Release fails once, then succeeds, to exercise retryable cleanup state.
 func (r *retryReleaseRegistry) Release(context.Context, uint32, []string) error {
 	r.releases++
 	if r.releases == 1 {
