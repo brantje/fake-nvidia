@@ -33,6 +33,8 @@ type compatibilityContract struct {
 	Topologies []string `json:"topologies"`
 }
 
+// repoRoot resolves the repository root from this test source file so contract
+// validation does not depend on the process working directory.
 func repoRoot(t *testing.T) string {
 	t.Helper()
 	_, file, _, ok := runtime.Caller(0)
@@ -42,6 +44,8 @@ func repoRoot(t *testing.T) string {
 	return filepath.Clean(filepath.Join(filepath.Dir(file), "..", ".."))
 }
 
+// readContract loads the machine-readable compatibility template used by the
+// release workflow and unmarshals only the fields enforced by these tests.
 func readContract(t *testing.T, root string) compatibilityContract {
 	t.Helper()
 	data, err := os.ReadFile(filepath.Join(root, "release", "compatibility.template.json"))
@@ -55,6 +59,8 @@ func readContract(t *testing.T, root string) compatibilityContract {
 	return contract
 }
 
+// readPins parses runtime/pins.env into a key/value map for drift checks against
+// the release compatibility contract.
 func readPins(t *testing.T, root string) map[string]string {
 	t.Helper()
 	data, err := os.ReadFile(filepath.Join(root, "runtime", "pins.env"))
@@ -76,6 +82,8 @@ func readPins(t *testing.T, root string) map[string]string {
 	return pins
 }
 
+// TestCompatibilityContractMatchesRepositoryPins verifies that release metadata
+// cannot drift from the Go, NVIDIA, and LlamaCPP-Manager compatibility pins.
 func TestCompatibilityContractMatchesRepositoryPins(t *testing.T) {
 	root := repoRoot(t)
 	contract := readContract(t, root)
@@ -115,6 +123,9 @@ func TestCompatibilityContractMatchesRepositoryPins(t *testing.T) {
 	}
 }
 
+// TestCompatibilityContractProfilesAndArchitectures verifies that the release
+// contract publishes the complete embedded profile/topology catalog and only
+// the supported Linux release architectures.
 func TestCompatibilityContractProfilesAndArchitectures(t *testing.T) {
 	contract := readContract(t, repoRoot(t))
 	catalog, err := profiles.LoadCatalog()
