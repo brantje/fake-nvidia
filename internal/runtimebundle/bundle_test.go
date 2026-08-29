@@ -22,6 +22,7 @@ func TestValidateRequiresRuntimeArtifacts(t *testing.T) {
 		{path: b.RealNvidiaSMI(), mode: 0o755},
 		{path: b.Control(), mode: 0o755},
 		{path: filepath.Join(b.LibraryDir(), "libnvidia-ml.so.1"), mode: 0o644},
+		{path: b.CUDA(), mode: 0o755},
 	} {
 		if err := os.MkdirAll(filepath.Dir(artifact.path), 0o755); err != nil {
 			t.Fatal(err)
@@ -47,6 +48,7 @@ func TestValidateRejectsNonExecutableBinaries(t *testing.T) {
 		{path: b.RealNvidiaSMI(), mode: 0o755},
 		{path: b.Control(), mode: 0o755},
 		{path: filepath.Join(b.LibraryDir(), "libnvidia-ml.so.1"), mode: 0o644},
+		{path: b.CUDA(), mode: 0o755},
 	} {
 		if err := os.MkdirAll(filepath.Dir(artifact.path), 0o755); err != nil {
 			t.Fatal(err)
