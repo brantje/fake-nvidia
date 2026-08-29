@@ -178,7 +178,7 @@ func writeTestBundle(t *testing.T, root string) {
 	if err := os.MkdirAll(filepath.Join(root, "lib"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"nvidia-smi", "nvidia-smi.real", "nvml-mock-ctl"} {
+	for _, name := range []string{"nvidia-smi", "nvidia-smi.real", "nvml-mock-ctl", "fake-llama-server"} {
 		if err := os.WriteFile(filepath.Join(root, "bin", name), []byte("#!/bin/sh\n"), 0o755); err != nil {
 			t.Fatal(err)
 		}
