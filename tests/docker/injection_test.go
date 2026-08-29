@@ -35,10 +35,11 @@ func TestCPUOnlyConsumerInjection(t *testing.T) {
 		"--profile", "rtx4060ti-16gb",
 		"--gpus", "2")
 
-	mounts := dockerInjectionArgs(root)
-	listArgs := append([]string{"run", "--rm"}, mounts...)
-	listArgs = append(listArgs, consumerImage, "sh", "-c", "test ! -e /dev/nvidiactl && exec nvidia-smi -L")
-	list := run(t, repoRoot, nil, "docker", listArgs...)
+	composeEnv := []string{"FAKE_NVIDIA_ROOT=" + root}
+	list := run(t, repoRoot, composeEnv, "docker", "compose",
+		"-f", "examples/docker/compose.yaml",
+		"-f", "examples/docker/compose.override.yaml",
+		"run", "--rm", "consumer")
 	if strings.Count(strings.TrimSpace(list), "\n") != 1 {
 		t.Fatalf("nvidia-smi -L output = %q, want two GPUs", list)
 	}
@@ -46,6 +47,7 @@ func TestCPUOnlyConsumerInjection(t *testing.T) {
 		t.Fatalf("nvidia-smi -L output = %q, missing GPU indices", list)
 	}
 
+	mounts := dockerInjectionArgs(root)
 	queryArgs := append([]string{"run", "--rm"}, mounts...)
 	queryArgs = append(queryArgs, consumerImage,
 		"nvidia-smi",
