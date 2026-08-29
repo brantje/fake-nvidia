@@ -30,8 +30,11 @@ func (b Bundle) RealNvidiaSMI() string { return filepath.Join(b.Root, "bin", "nv
 // Control returns the bundled nvml-mock-ctl path.
 func (b Bundle) Control() string { return filepath.Join(b.Root, "bin", "nvml-mock-ctl") }
 
-// LibraryDir returns the directory containing libnvidia-ml.so.
+// LibraryDir returns the directory containing NVIDIA-compatible shared libraries.
 func (b Bundle) LibraryDir() string { return filepath.Join(b.Root, "lib") }
+
+// CUDA returns the Phase 6 CUDA driver/runtime shim.
+func (b Bundle) CUDA() string { return filepath.Join(b.LibraryDir(), "libcuda.so.1") }
 
 // Validate checks that the minimum fake-nvidia runtime artifacts are present and usable.
 func (b Bundle) Validate() error {
@@ -46,6 +49,7 @@ func (b Bundle) Validate() error {
 		{path: b.RealNvidiaSMI(), executable: true},
 		{path: b.Control(), executable: true},
 		{path: filepath.Join(b.LibraryDir(), "libnvidia-ml.so.1")},
+		{path: b.CUDA()},
 	} {
 		info, err := os.Stat(artifact.path)
 		if err != nil {
