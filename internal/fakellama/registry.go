@@ -74,6 +74,8 @@ func (r *NVMLRegistry) Resize(ctx context.Context, pid uint32, name string, targ
 	return r.apply(ctx, pid, name, targets, totalBytes, tensorSplit, smUtil, memUtil)
 }
 
+// apply reconciles one PID across all requested GPUs and rolls back earlier
+// device updates if any later target cannot be updated atomically.
 func (r *NVMLRegistry) apply(ctx context.Context, pid uint32, name string, targets []string, totalBytes uint64, tensorSplit []float64, smUtil, memUtil uint32) error {
 	if r == nil || r.manager == nil {
 		return errors.New("fake llama-server process registry is not initialized")
@@ -132,6 +134,8 @@ func (r *NVMLRegistry) apply(ctx context.Context, pid uint32, name string, targe
 	return nil
 }
 
+// rollback restores each previously changed target to its prior PID record while
+// preserving unrelated process state observed at rollback time.
 func (r *NVMLRegistry) rollback(ctx context.Context, pid uint32, applied []priorProcess) {
 	for i := len(applied) - 1; i >= 0; i-- {
 		item := applied[i]
@@ -170,6 +174,8 @@ func (r *NVMLRegistry) Release(ctx context.Context, pid uint32, targets []string
 	return joined
 }
 
+// deviceAndProcess resolves one target by GPU index or UUID and returns the
+// current PID record when present alongside the full effective device state.
 func (r *NVMLRegistry) deviceAndProcess(ctx context.Context, target string, pid uint32) (control.DeviceState, control.Process, bool, error) {
 	states, err := r.manager.Snapshot(ctx)
 	if err != nil {
@@ -189,6 +195,7 @@ func (r *NVMLRegistry) deviceAndProcess(ctx context.Context, target string, pid 
 	return control.DeviceState{}, control.Process{}, false, fmt.Errorf("GPU %q not found", target)
 }
 
+// withoutPID returns a copy of processes with every record for pid removed.
 func withoutPID(processes []control.Process, pid uint32) []control.Process {
 	out := make([]control.Process, 0, len(processes))
 	for _, process := range processes {
@@ -199,6 +206,8 @@ func withoutPID(processes []control.Process, pid uint32) []control.Process {
 	return out
 }
 
+// splitProcessMiB rounds totalBytes up to MiB and deterministically distributes
+// the process-owned memory over targets according to optional tensor weights.
 func splitProcessMiB(totalBytes uint64, targets []string, tensorSplit []float64) ([]uint64, error) {
 	if len(targets) == 0 {
 		return nil, errors.New("at least one target is required")
@@ -230,6 +239,7 @@ func splitProcessMiB(totalBytes uint64, targets []string, tensorSplit []float64)
 	return amounts, nil
 }
 
+// envString returns a trimmed environment value or fallback when unset.
 func envString(key, fallback string) string {
 	if value := strings.TrimSpace(os.Getenv(key)); value != "" {
 		return value
