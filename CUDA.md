@@ -44,7 +44,7 @@ Profile identity remains owned by the fake-nvidia profile catalog. Device names 
 | `cuDeviceGetAttribute` | Supports a small capability-check subset: thread/block/grid limits, shared/constant memory limits, warp size, unified addressing, compute capability, and managed-memory flag. Other attributes return `CUDA_ERROR_NOT_SUPPORTED`. |
 | `cuMemGetInfo`, `cuMemGetInfo_v2` | Returns effective free/total VRAM from Mock NVML state. |
 | `cuMemAlloc`, `cuMemAlloc_v2` | Reserves simulated VRAM and returns a tiny opaque host token; it does not allocate the requested amount of host RAM. |
-| `cuMemFree`, `cuMemMemFree_v2` | Releases a tracked simulated VRAM reservation. |
+| `cuMemFree`, `cuMemFree_v2` | Releases a tracked simulated VRAM reservation. |
 | `cuGetErrorName`, `cuGetErrorString` | Returns stable strings for the supported driver result set. |
 | `cuGetProcAddress`, `cuGetProcAddress_v2` | Resolves only the explicitly supported/explicitly-failing Phase 6 driver symbols. Unknown symbols return `CUDA_ERROR_NOT_FOUND`. |
 
