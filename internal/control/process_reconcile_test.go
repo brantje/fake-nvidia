@@ -36,7 +36,7 @@ func TestReplaceProcessesFromStateRebasesConcurrentAddition(t *testing.T) {
 	got := strings.Join(mutationRunner.calls[0].args, " ")
 	for _, want := range []string{
 		`{"pid":100,"type":"C","name":"existing","used_memory_mib":1024}`,
-		`{"pid":300,"name":"concurrent","used_memory_mib":1024}`,
+		`{"pid":300,"type":"C","name":"concurrent","used_memory_mib":1024}`,
 		`{"pid":200,"type":"C","name":"ours","used_memory_mib":1024}`,
 		"memory.used_bytes=4294967296",
 		"memory.free_bytes=12884901888",
