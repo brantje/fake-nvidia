@@ -1,0 +1,71 @@
+name: Phase 8
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: phase8-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  LLAMACPP_MANAGER_REVISION: 0c26e8e19635c5047d06babc7ba3b0173570e6ce
+  LLAMACPP_MANAGER_IMAGE: ghcr.io/brantje/llamacpp-manager:main-0c26e8e
+
+jobs:
+  e2e:
+    name: LlamaCPP-Manager full stack
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Verify Docker buildx
+        run: docker buildx version
+
+      - name: Log in to GHCR
+        uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567 # v3.3.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull pinned LlamaCPP-Manager image
+        run: |
+          docker pull "$LLAMACPP_MANAGER_IMAGE"
+          digest="$(docker image inspect "$LLAMACPP_MANAGER_IMAGE" --format '{{index .RepoDigests 0}}')"
+          printf 'LlamaCPP-Manager revision: %s\n' "$LLAMACPP_MANAGER_REVISION"
+          printf 'LlamaCPP-Manager image: %s\n' "$LLAMACPP_MANAGER_IMAGE"
+          printf 'LlamaCPP-Manager digest: %s\n' "$digest"
+          {
+            printf '### Phase 8 compatibility target\n\n'
+            printf -- '- Revision: `%s`\n' "$LLAMACPP_MANAGER_REVISION"
+            printf -- '- Image: `%s`\n' "$LLAMACPP_MANAGER_IMAGE"
+            printf -- '- Digest: `%s`\n' "$digest"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Build pinned fake NVIDIA runtime
+        run: make runtime
+
+      - name: Run Phase 8 full-stack scenarios
+        run: make phase8-e2e
