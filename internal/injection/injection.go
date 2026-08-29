@@ -30,7 +30,8 @@ type Layout struct {
 // Prepare copies an existing runtime bundle into an isolated injection root and
 // writes the rendered Mock NVML configuration used by consumer containers.
 // Existing paths are replaced only when they were previously created by this
-// package, preventing accidental deletion of unrelated host files.
+// package, preventing accidental deletion of unrelated host files. Refreshing
+// an owned root preserves its existing Mock NVML override state.
 func Prepare(root, runtimeRoot string, configYAML []byte) (Layout, error) {
 	if len(bytes.TrimSpace(configYAML)) == 0 {
 		return Layout{}, errors.New("rendered Mock NVML config is required")
@@ -79,6 +80,9 @@ func Prepare(root, runtimeRoot string, configYAML []byte) (Layout, error) {
 	if err := os.WriteFile(layout.ConfigPath, configYAML, 0o644); err != nil {
 		return Layout{}, fmt.Errorf("write Mock NVML config: %w", err)
 	}
+	if err := preserveOverrides(rootAbs, layout.OverridesPath); err != nil {
+		return Layout{}, err
+	}
 	if err := os.WriteFile(filepath.Join(tmp, markerName), []byte(markerContent), 0o644); err != nil {
 		return Layout{}, fmt.Errorf("write injection marker: %w", err)
 	}
@@ -121,6 +125,7 @@ func Down(root string) error {
 	return nil
 }
 
+// layoutFor returns the deterministic runtime and state paths beneath root.
 func layoutFor(root string) Layout {
 	state := filepath.Join(root, "state")
 	return Layout{
@@ -132,6 +137,7 @@ func layoutFor(root string) Layout {
 	}
 }
 
+// cleanAbsolute normalizes a required path to an absolute clean path.
 func cleanAbsolute(path string) (string, error) {
 	if path == "" {
 		return "", errors.New("path is required")
@@ -143,6 +149,7 @@ func cleanAbsolute(path string) (string, error) {
 	return filepath.Clean(abs), nil
 }
 
+// validateSeparation ensures the source runtime and injection root cannot overlap.
 func validateSeparation(root, runtimeRoot string) error {
 	if root == filepath.Clean(string(os.PathSeparator)) {
 		return errors.New("refusing to use filesystem root as injection root")
@@ -159,6 +166,7 @@ func validateSeparation(root, runtimeRoot string) error {
 	return nil
 }
 
+// within reports whether child is parent itself or lies below parent.
 func within(parent, child string) bool {
 	rel, err := filepath.Rel(parent, child)
 	if err != nil || filepath.IsAbs(rel) {
@@ -167,6 +175,7 @@ func within(parent, child string) bool {
 	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator)))
 }
 
+// requireOwnedOrAbsent allows a missing path or validates an existing owned root.
 func requireOwnedOrAbsent(root string) error {
 	if _, err := os.Lstat(root); errors.Is(err, os.ErrNotExist) {
 		return nil
@@ -176,6 +185,7 @@ func requireOwnedOrAbsent(root string) error {
 	return requireOwned(root)
 }
 
+// requireOwned verifies the marker that authorizes replacement or teardown.
 func requireOwned(root string) error {
 	data, err := os.ReadFile(filepath.Join(root, markerName))
 	if err != nil {
@@ -190,6 +200,26 @@ func requireOwned(root string) error {
 	return nil
 }
 
+// preserveOverrides copies existing regular override state into a refresh root.
+func preserveOverrides(root, destination string) error {
+	oldOverrides := filepath.Join(root, "state", "overrides.yaml")
+	info, err := os.Lstat(oldOverrides)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("inspect existing Mock NVML overrides: %w", err)
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("existing Mock NVML overrides is not a regular file: %s", oldOverrides)
+	}
+	if err := copyFile(oldOverrides, destination, info.Mode().Perm()); err != nil {
+		return fmt.Errorf("preserve Mock NVML overrides: %w", err)
+	}
+	return nil
+}
+
+// copyTree recursively copies regular files, directories, and symlinks.
 func copyTree(src, dst string) error {
 	return filepath.WalkDir(src, func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
@@ -225,6 +255,7 @@ func copyTree(src, dst string) error {
 	})
 }
 
+// copyFile copies one regular file while preserving its permission bits.
 func copyFile(src, dst string, mode fs.FileMode) error {
 	in, err := os.Open(src)
 	if err != nil {
