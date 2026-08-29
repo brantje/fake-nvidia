@@ -15,26 +15,26 @@ const mib = uint64(1024 * 1024)
 // Config describes the manager-compatible fake llama-server process and its
 // deterministic resource/failure behavior.
 type Config struct {
-	Host                string
-	Port                int
-	ModelPath           string
-	Targets             []string
-	TensorSplit         []float64
-	ContextSize         int
-	VRAMBytes           uint64
-	VRAMExplicit        bool
-	KVBytesPerToken     uint64
-	LoadDelay           time.Duration
-	StartupFail         bool
-	ForceOOM            bool
-	CrashAfterReady     time.Duration
-	HangShutdown        bool
-	GrowthAfter         time.Duration
-	GrowthBytes         uint64
-	SMUtil              uint32
-	MemoryUtil          uint32
-	TokenDelay          time.Duration
-	Response             string
+	Host            string
+	Port            int
+	ModelPath       string
+	Targets         []string
+	TensorSplit     []float64
+	ContextSize     int
+	VRAMBytes       uint64
+	VRAMExplicit    bool
+	KVBytesPerToken uint64
+	LoadDelay       time.Duration
+	StartupFail     bool
+	ForceOOM        bool
+	CrashAfterReady time.Duration
+	HangShutdown    bool
+	GrowthAfter     time.Duration
+	GrowthBytes     uint64
+	SMUtil          uint32
+	MemoryUtil      uint32
+	TokenDelay      time.Duration
+	Response        string
 }
 
 // ParseConfig accepts the subset of llama-server arguments owned by the
@@ -53,9 +53,9 @@ func ParseConfig(args []string, getenv func(string) string) (Config, error) {
 	}
 
 	if raw := strings.TrimSpace(getenv("FAKE_LLAMA_PORT")); raw != "" {
-		port, err := strconv.Atoi(raw)
-		if err != nil || port < 0 || port > 65535 {
-			return Config{}, fmt.Errorf("invalid FAKE_LLAMA_PORT %q", raw)
+		port, err := parsePort(raw)
+		if err != nil {
+			return Config{}, fmt.Errorf("FAKE_LLAMA_PORT: %w", err)
 		}
 		cfg.Port = port
 	}
@@ -73,6 +73,7 @@ func ParseConfig(args []string, getenv func(string) string) (Config, error) {
 		}
 		cfg.KVBytesPerToken = value
 	}
+
 	var err error
 	if cfg.LoadDelay, err = parseDurationEnv(getenv, "FAKE_LLAMA_LOAD_DELAY"); err != nil {
 		return Config{}, err
@@ -87,8 +88,7 @@ func ParseConfig(args []string, getenv func(string) string) (Config, error) {
 		return Config{}, err
 	}
 	if raw := strings.TrimSpace(getenv("FAKE_LLAMA_VRAM_GROWTH")); raw != "" {
-		cfg.GrowthBytes, err = ParseBytes(raw)
-		if err != nil {
+		if cfg.GrowthBytes, err = ParseBytes(raw); err != nil {
 			return Config{}, fmt.Errorf("FAKE_LLAMA_VRAM_GROWTH: %w", err)
 		}
 	}
@@ -102,14 +102,12 @@ func ParseConfig(args []string, getenv func(string) string) (Config, error) {
 		return Config{}, err
 	}
 	if raw := strings.TrimSpace(getenv("FAKE_LLAMA_SM_UTIL")); raw != "" {
-		cfg.SMUtil, err = parsePercent(raw)
-		if err != nil {
+		if cfg.SMUtil, err = parsePercent(raw); err != nil {
 			return Config{}, fmt.Errorf("FAKE_LLAMA_SM_UTIL: %w", err)
 		}
 	}
 	if raw := strings.TrimSpace(getenv("FAKE_LLAMA_MEMORY_UTIL")); raw != "" {
-		cfg.MemoryUtil, err = parsePercent(raw)
-		if err != nil {
+		if cfg.MemoryUtil, err = parsePercent(raw); err != nil {
 			return Config{}, fmt.Errorf("FAKE_LLAMA_MEMORY_UTIL: %w", err)
 		}
 	}
@@ -118,22 +116,18 @@ func ParseConfig(args []string, getenv func(string) string) (Config, error) {
 	if raw := strings.TrimSpace(getenv("FAKE_LLAMA_GPUS")); raw != "" {
 		cfg.Targets = splitList(raw)
 		explicitTargets = true
-	}
-	if !explicitTargets {
-		if raw := strings.TrimSpace(getenv("CUDA_VISIBLE_DEVICES")); raw != "" && raw != "-1" && !strings.EqualFold(raw, "NoDevFiles") {
-			cfg.Targets = splitList(raw)
-			explicitTargets = len(cfg.Targets) != 0
-		}
+	} else if raw := strings.TrimSpace(getenv("CUDA_VISIBLE_DEVICES")); raw != "" && raw != "-1" && !strings.EqualFold(raw, "NoDevFiles") {
+		cfg.Targets = splitList(raw)
+		explicitTargets = len(cfg.Targets) > 0
 	}
 
 	mainGPU := ""
 	for i := 0; i < len(args); i++ {
 		raw := args[i]
 		key, inline, hasInline := strings.Cut(strings.TrimLeft(raw, "-"), "=")
-		value := inline
-		needsValue := func() (string, error) {
+		value := func() (string, error) {
 			if hasInline {
-				return value, nil
+				return inline, nil
 			}
 			if i+1 >= len(args) {
 				return "", fmt.Errorf("--%s requires a value", key)
@@ -144,165 +138,94 @@ func ParseConfig(args []string, getenv func(string) string) (Config, error) {
 
 		switch key {
 		case "model", "m":
-			v, err := needsValue()
-			if err != nil {
-				return Config{}, err
-			}
-			cfg.ModelPath = v
+			cfg.ModelPath, err = value()
 		case "host":
-			v, err := needsValue()
-			if err != nil {
-				return Config{}, err
-			}
-			cfg.Host = v
+			cfg.Host, err = value()
 		case "port":
-			v, err := needsValue()
-			if err != nil {
-				return Config{}, err
+			var rawPort string
+			rawPort, err = value()
+			if err == nil {
+				cfg.Port, err = parsePort(rawPort)
 			}
-			port, err := strconv.Atoi(v)
-			if err != nil || port < 0 || port > 65535 {
-				return Config{}, fmt.Errorf("invalid --port %q", v)
-			}
-			cfg.Port = port
 		case "ctx-size", "c":
-			v, err := needsValue()
-			if err != nil {
-				return Config{}, err
+			var rawCtx string
+			rawCtx, err = value()
+			if err == nil {
+				cfg.ContextSize, err = strconv.Atoi(rawCtx)
+				if err == nil && cfg.ContextSize < 0 {
+					err = fmt.Errorf("invalid --ctx-size %q", rawCtx)
+				}
 			}
-			ctxSize, err := strconv.Atoi(v)
-			if err != nil || ctxSize < 0 {
-				return Config{}, fmt.Errorf("invalid --ctx-size %q", v)
-			}
-			cfg.ContextSize = ctxSize
 		case "main-gpu":
-			v, err := needsValue()
-			if err != nil {
-				return Config{}, err
-			}
-			mainGPU = strings.TrimSpace(v)
+			mainGPU, err = value()
+			mainGPU = strings.TrimSpace(mainGPU)
 		case "tensor-split":
-			v, err := needsValue()
-			if err != nil {
-				return Config{}, err
-			}
-			cfg.TensorSplit, err = parseTensorSplit(v)
-			if err != nil {
-				return Config{}, err
+			var rawSplit string
+			rawSplit, err = value()
+			if err == nil {
+				cfg.TensorSplit, err = parseTensorSplit(rawSplit)
 			}
 		case "fake-gpus":
-			v, err := needsValue()
-			if err != nil {
-				return Config{}, err
+			var rawTargets string
+			rawTargets, err = value()
+			if err == nil {
+				cfg.Targets = splitList(rawTargets)
+				explicitTargets = true
 			}
-			cfg.Targets = splitList(v)
-			explicitTargets = true
 		case "fake-vram":
-			v, err := needsValue()
-			if err != nil {
-				return Config{}, err
+			var rawSize string
+			rawSize, err = value()
+			if err == nil {
+				cfg.VRAMBytes, err = ParseBytes(rawSize)
+				cfg.VRAMExplicit = err == nil
 			}
-			cfg.VRAMBytes, err = ParseBytes(v)
-			if err != nil {
-				return Config{}, err
-			}
-			cfg.VRAMExplicit = true
 		case "fake-kv-bytes-per-token":
-			v, err := needsValue()
-			if err != nil {
-				return Config{}, err
-			}
-			cfg.KVBytesPerToken, err = ParseBytes(v)
-			if err != nil {
-				return Config{}, err
+			var rawSize string
+			rawSize, err = value()
+			if err == nil {
+				cfg.KVBytesPerToken, err = ParseBytes(rawSize)
 			}
 		case "fake-load-delay":
-			v, err := needsValue()
-			if err != nil {
-				return Config{}, err
-			}
-			cfg.LoadDelay, err = time.ParseDuration(v)
-			if err != nil || cfg.LoadDelay < 0 {
-				return Config{}, fmt.Errorf("invalid --fake-load-delay %q", v)
-			}
+			cfg.LoadDelay, err = durationValue(value)
 		case "fake-crash-after-ready":
-			v, err := needsValue()
-			if err != nil {
-				return Config{}, err
-			}
-			cfg.CrashAfterReady, err = time.ParseDuration(v)
-			if err != nil || cfg.CrashAfterReady < 0 {
-				return Config{}, fmt.Errorf("invalid --fake-crash-after-ready %q", v)
-			}
+			cfg.CrashAfterReady, err = durationValue(value)
 		case "fake-vram-growth-after":
-			v, err := needsValue()
-			if err != nil {
-				return Config{}, err
-			}
-			cfg.GrowthAfter, err = time.ParseDuration(v)
-			if err != nil || cfg.GrowthAfter < 0 {
-				return Config{}, fmt.Errorf("invalid --fake-vram-growth-after %q", v)
-			}
+			cfg.GrowthAfter, err = durationValue(value)
 		case "fake-vram-growth":
-			v, err := needsValue()
-			if err != nil {
-				return Config{}, err
-			}
-			cfg.GrowthBytes, err = ParseBytes(v)
-			if err != nil {
-				return Config{}, err
+			var rawSize string
+			rawSize, err = value()
+			if err == nil {
+				cfg.GrowthBytes, err = ParseBytes(rawSize)
 			}
 		case "fake-token-delay":
-			v, err := needsValue()
-			if err != nil {
-				return Config{}, err
-			}
-			cfg.TokenDelay, err = time.ParseDuration(v)
-			if err != nil || cfg.TokenDelay < 0 {
-				return Config{}, fmt.Errorf("invalid --fake-token-delay %q", v)
-			}
+			cfg.TokenDelay, err = durationValue(value)
 		case "fake-response":
-			v, err := needsValue()
-			if err != nil {
-				return Config{}, err
-			}
-			cfg.Response = v
+			cfg.Response, err = value()
 		case "fake-sm-util":
-			v, err := needsValue()
-			if err != nil {
-				return Config{}, err
-			}
-			cfg.SMUtil, err = parsePercent(v)
-			if err != nil {
-				return Config{}, err
+			var rawPercent string
+			rawPercent, err = value()
+			if err == nil {
+				cfg.SMUtil, err = parsePercent(rawPercent)
 			}
 		case "fake-memory-util":
-			v, err := needsValue()
-			if err != nil {
-				return Config{}, err
-			}
-			cfg.MemoryUtil, err = parsePercent(v)
-			if err != nil {
-				return Config{}, err
+			var rawPercent string
+			rawPercent, err = value()
+			if err == nil {
+				cfg.MemoryUtil, err = parsePercent(rawPercent)
 			}
 		case "fake-startup-fail":
-			cfg.StartupFail, err = parseOptionalBool(value, hasInline, true)
-			if err != nil {
-				return Config{}, err
-			}
+			cfg.StartupFail, err = parseOptionalBool(inline, hasInline, true)
 		case "fake-cuda-oom":
-			cfg.ForceOOM, err = parseOptionalBool(value, hasInline, true)
-			if err != nil {
-				return Config{}, err
-			}
+			cfg.ForceOOM, err = parseOptionalBool(inline, hasInline, true)
 		case "fake-hang-shutdown":
-			cfg.HangShutdown, err = parseOptionalBool(value, hasInline, true)
-			if err != nil {
-				return Config{}, err
-			}
+			cfg.HangShutdown, err = parseOptionalBool(inline, hasInline, true)
 		default:
-			// Unknown llama.cpp flags are deliberately ignored. Their following
-			// value, when any, is also harmlessly ignored on the next iteration.
+			// Unknown llama.cpp flags and positional values are deliberately
+			// ignored so the binary can be substituted without manager changes.
+			continue
+		}
+		if err != nil {
+			return Config{}, err
 		}
 	}
 
@@ -350,12 +273,13 @@ func (c Config) RequiredVRAMBytes() (uint64, error) {
 		base = uint64(info.Size())
 	}
 	if c.ContextSize > 0 && c.KVBytesPerToken > 0 {
+		maxUint64 := ^uint64(0)
 		ctx := uint64(c.ContextSize)
-		if ctx > math.MaxUint64/c.KVBytesPerToken {
+		if ctx > maxUint64/c.KVBytesPerToken {
 			return 0, errors.New("KV cache approximation overflows uint64")
 		}
 		kv := ctx * c.KVBytesPerToken
-		if base > math.MaxUint64-kv {
+		if base > maxUint64-kv {
 			return 0, errors.New("simulated VRAM requirement overflows uint64")
 		}
 		base += kv
@@ -393,10 +317,30 @@ func ParseBytes(raw string) (uint64, error) {
 		return 0, fmt.Errorf("invalid size %q", raw)
 	}
 	bytes := value * mult
-	if bytes > math.MaxUint64 {
+	if bytes > float64(^uint64(0)) {
 		return 0, fmt.Errorf("size %q overflows uint64", raw)
 	}
 	return uint64(math.Round(bytes)), nil
+}
+
+func durationValue(read func() (string, error)) (time.Duration, error) {
+	raw, err := read()
+	if err != nil {
+		return 0, err
+	}
+	value, err := time.ParseDuration(raw)
+	if err != nil || value < 0 {
+		return 0, fmt.Errorf("invalid duration %q", raw)
+	}
+	return value, nil
+}
+
+func parsePort(raw string) (int, error) {
+	port, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil || port < 0 || port > 65535 {
+		return 0, fmt.Errorf("invalid port %q", raw)
+	}
+	return port, nil
 }
 
 func parseTensorSplit(raw string) ([]float64, error) {
