@@ -29,13 +29,15 @@ The current suite covers:
 
 | Area | Scenarios |
 | --- | --- |
-| Discovery | 1x 8 GiB, 1x 16 GiB, 2x 16 GiB, 4x 24 GiB, mixed 16/24/16/48 GiB, no NVIDIA GPU |
-| Capacity / placement | single-GPU placement, aggregate multi-GPU split placement, external VRAM pressure, insufficient capacity |
-| Lifecycle / eviction | worker start/stop accounting, eligible victim eviction, eviction-disabled worker protection |
-| Telemetry | manager-visible process PID/device/VRAM, GPU used-memory deltas, live utilization mutation |
-| Failure paths | injected CUDA OOM, crash after readiness, simulator process/VRAM cleanup |
+| Discovery | 1x 8 GiB, 1x 16 GiB, 2x 16 GiB, 4x 24 GiB, mixed 16/24/16/48 GiB, no NVIDIA GPU, GPU lost/offline and recovery |
+| Capacity / placement | single-GPU placement, aggregate multi-GPU split placement, external VRAM pressure, insufficient capacity, deterministic resource change between manager planning and worker reservation |
+| Lifecycle / eviction | worker start/stop accounting, eligible victim eviction, eviction-disabled worker protection, multiple simultaneous workers pinned to distinct fake GPUs |
+| Telemetry | manager-visible process PID/device/VRAM, GPU used-memory deltas, live utilization mutation, UI-facing runtime WebSocket per-instance VRAM and GPU utilization |
+| Failure paths | injected CUDA OOM, startup timeout, NVIDIA query failure/recovery, GPU lost/offline, post-ready fake llama crash, simulator process/VRAM cleanup |
 
 Each lifecycle scenario asserts both manager-observable state and fake-nvidia runtime state so a manager decision cannot pass merely because the fake server defaulted to GPU 0.
+
+The plan-versus-launch scenario uses `FAKE_LLAMA_REGISTER_GATE` to hold the fake worker after LlamaCPP-Manager has planned and launched it but before the worker registers fake NVML process/VRAM state. The test changes available VRAM and then releases the gate, making the race deterministic rather than timing-based.
 
 ## Running
 
