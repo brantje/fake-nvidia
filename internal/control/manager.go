@@ -49,7 +49,7 @@ func (c *Client) SetMemoryUtilization(ctx context.Context, target string, value 
 // SetUsedMemory changes synthetic used VRAM while preserving the current
 // effective used+free pool, including any profile-level reserved memory.
 func (m *Manager) SetUsedMemory(ctx context.Context, target string, usedBytes uint64) error {
-	return m.withMutationLock(ctx, func() error {
+	return m.withMutationLock(func() error {
 		device, err := m.device(ctx, target)
 		if err != nil {
 			return err
@@ -74,7 +74,7 @@ func (m *Manager) SetUsedMemory(ctx context.Context, target string, usedBytes ui
 
 // ReserveMemory increases synthetic non-profile VRAM usage by delta bytes.
 func (m *Manager) ReserveMemory(ctx context.Context, target string, delta uint64) error {
-	return m.withMutationLock(ctx, func() error {
+	return m.withMutationLock(func() error {
 		device, err := m.device(ctx, target)
 		if err != nil {
 			return err
@@ -92,7 +92,7 @@ func (m *Manager) ReserveMemory(ctx context.Context, target string, delta uint64
 
 // ReleaseMemory decreases synthetic VRAM usage by delta bytes.
 func (m *Manager) ReleaseMemory(ctx context.Context, target string, delta uint64) error {
-	return m.withMutationLock(ctx, func() error {
+	return m.withMutationLock(func() error {
 		device, err := m.device(ctx, target)
 		if err != nil {
 			return err
@@ -166,7 +166,7 @@ func (m *Manager) device(ctx context.Context, target string) (DeviceState, error
 	return m.Observer.Device(ctx, target)
 }
 
-func (m *Manager) withMutationLock(ctx context.Context, fn func() error) error {
+func (m *Manager) withMutationLock(fn func() error) error {
 	if m == nil {
 		return errors.New("control manager is required")
 	}
@@ -178,25 +178,11 @@ func (m *Manager) withMutationLock(ctx context.Context, fn func() error) error {
 		return fmt.Errorf("open mutation lock: %w", err)
 	}
 	defer lock.Close()
-
-	for {
-		if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err == nil {
-			break
-		} else if !errors.Is(err, syscall.EWOULDBLOCK) && !errors.Is(err, syscall.EAGAIN) {
-			return fmt.Errorf("lock mutation state: %w", err)
-		}
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-timeAfterMutationRetry():
-		}
+	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX); err != nil {
+		return fmt.Errorf("lock mutation state: %w", err)
 	}
 	defer func() { _ = syscall.Flock(int(lock.Fd()), syscall.LOCK_UN) }()
 	return fn()
-}
-
-var timeAfterMutationRetry = func() <-chan time.Time {
-	return time.After(10 * time.Millisecond)
 }
 
 func processBytes(processes []Process) (uint64, error) {
