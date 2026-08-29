@@ -4,12 +4,19 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"syscall"
 )
 
 // Manager composes effective-state reads with upstream-backed mutations.
 type Manager struct {
 	Client   *Client
 	Observer *Observer
+
+	// MutationLockPath serializes effective-state read-modify-write operations
+	// performed by separate fake-nvidia control processes. Leave empty when the
+	// manager is embedded with an already-serialized or in-memory backend.
+	MutationLockPath string
 }
 
 // NewManager constructs a high-level control manager.
@@ -42,65 +49,71 @@ func (c *Client) SetMemoryUtilization(ctx context.Context, target string, value 
 // SetUsedMemory changes synthetic used VRAM while preserving the current
 // effective used+free pool, including any profile-level reserved memory.
 func (m *Manager) SetUsedMemory(ctx context.Context, target string, usedBytes uint64) error {
-	device, err := m.device(ctx, target)
-	if err != nil {
-		return err
-	}
-	pool, err := addBytes(device.UsedBytes, device.FreeBytes)
-	if err != nil {
-		return err
-	}
-	if usedBytes > pool {
-		return fmt.Errorf("requested used memory %d exceeds allocatable pool %d", usedBytes, pool)
-	}
-	owned, err := processBytes(device.Processes)
-	if err != nil {
-		return err
-	}
-	if usedBytes < owned {
-		return fmt.Errorf("requested used memory %d is below process-owned memory %d", usedBytes, owned)
-	}
-	return m.Client.SetMemory(ctx, target, usedBytes, pool-usedBytes)
+	return m.withMutationLock(ctx, func() error {
+		device, err := m.device(ctx, target)
+		if err != nil {
+			return err
+		}
+		pool, err := addBytes(device.UsedBytes, device.FreeBytes)
+		if err != nil {
+			return err
+		}
+		if usedBytes > pool {
+			return fmt.Errorf("requested used memory %d exceeds allocatable pool %d", usedBytes, pool)
+		}
+		owned, err := processBytes(device.Processes)
+		if err != nil {
+			return err
+		}
+		if usedBytes < owned {
+			return fmt.Errorf("requested used memory %d is below process-owned memory %d", usedBytes, owned)
+		}
+		return m.Client.SetMemory(ctx, target, usedBytes, pool-usedBytes)
+	})
 }
 
 // ReserveMemory increases synthetic non-profile VRAM usage by delta bytes.
 func (m *Manager) ReserveMemory(ctx context.Context, target string, delta uint64) error {
-	device, err := m.device(ctx, target)
-	if err != nil {
-		return err
-	}
-	if delta > device.FreeBytes {
-		return fmt.Errorf("cannot reserve %d bytes: only %d bytes free", delta, device.FreeBytes)
-	}
-	used, err := addBytes(device.UsedBytes, delta)
-	if err != nil {
-		return err
-	}
-	return m.Client.SetMemory(ctx, target, used, device.FreeBytes-delta)
+	return m.withMutationLock(ctx, func() error {
+		device, err := m.device(ctx, target)
+		if err != nil {
+			return err
+		}
+		if delta > device.FreeBytes {
+			return fmt.Errorf("cannot reserve %d bytes: only %d bytes free", delta, device.FreeBytes)
+		}
+		used, err := addBytes(device.UsedBytes, delta)
+		if err != nil {
+			return err
+		}
+		return m.Client.SetMemory(ctx, target, used, device.FreeBytes-delta)
+	})
 }
 
 // ReleaseMemory decreases synthetic VRAM usage by delta bytes.
 func (m *Manager) ReleaseMemory(ctx context.Context, target string, delta uint64) error {
-	device, err := m.device(ctx, target)
-	if err != nil {
-		return err
-	}
-	owned, err := processBytes(device.Processes)
-	if err != nil {
-		return err
-	}
-	if owned > device.UsedBytes {
-		return errors.New("process-owned memory exceeds effective used memory")
-	}
-	releasable := device.UsedBytes - owned
-	if delta > releasable {
-		return fmt.Errorf("cannot release %d bytes: only %d non-process bytes are releasable", delta, releasable)
-	}
-	free, err := addBytes(device.FreeBytes, delta)
-	if err != nil {
-		return err
-	}
-	return m.Client.SetMemory(ctx, target, device.UsedBytes-delta, free)
+	return m.withMutationLock(ctx, func() error {
+		device, err := m.device(ctx, target)
+		if err != nil {
+			return err
+		}
+		owned, err := processBytes(device.Processes)
+		if err != nil {
+			return err
+		}
+		if owned > device.UsedBytes {
+			return errors.New("process-owned memory exceeds effective used memory")
+		}
+		releasable := device.UsedBytes - owned
+		if delta > releasable {
+			return fmt.Errorf("cannot release %d bytes: only %d non-process bytes are releasable", delta, releasable)
+		}
+		free, err := addBytes(device.FreeBytes, delta)
+		if err != nil {
+			return err
+		}
+		return m.Client.SetMemory(ctx, target, device.UsedBytes-delta, free)
+	})
 }
 
 // ReplaceProcesses reconciles the supplied process list with current effective
@@ -123,12 +136,10 @@ func (m *Manager) ReplaceProcessesFromState(ctx context.Context, target string, 
 	if err != nil {
 		return err
 	}
-	nonProcessUsed := device.UsedBytes
-	if currentProcessBytes <= nonProcessUsed {
-		nonProcessUsed -= currentProcessBytes
-	} else {
-		nonProcessUsed = 0
+	if currentProcessBytes > device.UsedBytes {
+		return errors.New("process-owned memory exceeds effective used memory")
 	}
+	nonProcessUsed := device.UsedBytes - currentProcessBytes
 	reservedBytes := uint64(0)
 	visible, err := addBytes(device.UsedBytes, device.FreeBytes)
 	if err != nil {
@@ -153,6 +164,39 @@ func (m *Manager) device(ctx context.Context, target string) (DeviceState, error
 		return DeviceState{}, errors.New("control client and observer are required")
 	}
 	return m.Observer.Device(ctx, target)
+}
+
+func (m *Manager) withMutationLock(ctx context.Context, fn func() error) error {
+	if m == nil {
+		return errors.New("control manager is required")
+	}
+	if m.MutationLockPath == "" {
+		return fn()
+	}
+	lock, err := os.OpenFile(m.MutationLockPath, os.O_CREATE|os.O_RDWR, 0o644)
+	if err != nil {
+		return fmt.Errorf("open mutation lock: %w", err)
+	}
+	defer lock.Close()
+
+	for {
+		if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err == nil {
+			break
+		} else if !errors.Is(err, syscall.EWOULDBLOCK) && !errors.Is(err, syscall.EAGAIN) {
+			return fmt.Errorf("lock mutation state: %w", err)
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-timeAfterMutationRetry():
+		}
+	}
+	defer func() { _ = syscall.Flock(int(lock.Fd()), syscall.LOCK_UN) }()
+	return fn()
+}
+
+var timeAfterMutationRetry = func() <-chan time.Time {
+	return time.After(10 * time.Millisecond)
 }
 
 func processBytes(processes []Process) (uint64, error) {
