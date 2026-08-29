@@ -85,6 +85,7 @@ type Allocation struct {
 type Engine struct {
 	mu                    sync.Mutex
 	backend               Backend
+	fault                 FaultPolicy
 	currentDevice         int
 	allocations           map[uintptr]Allocation
 	successfulAllocations int64
@@ -100,6 +101,7 @@ func NewEngine(backend Backend, policy FaultPolicy) (*Engine, error) {
 	}
 	return &Engine{
 		backend:       backend,
+		fault:         policy,
 		currentDevice: 0,
 		allocations:   make(map[uintptr]Allocation),
 	}, nil
@@ -195,7 +197,7 @@ func (e *Engine) TrackAllocation(ctx context.Context, token uintptr, size uint64
 	if _, exists := e.allocations[token]; exists {
 		return StatusInvalidValue
 	}
-	if e.successfulAllocations >= 0 && e.shouldInjectOOMLocked() {
+	if e.shouldInjectOOMLocked() {
 		return StatusOutOfMemory
 	}
 
@@ -309,11 +311,7 @@ func (e *Engine) AllocationCount() int {
 }
 
 func (e *Engine) shouldInjectOOMLocked() bool {
-	policy, err := FaultPolicyFromEnv()
-	if err == nil && policy.OOMAfter >= 0 {
-		return e.successfulAllocations >= policy.OOMAfter
-	}
-	return false
+	return e.fault.OOMAfter >= 0 && e.successfulAllocations >= e.fault.OOMAfter
 }
 
 func findDevice(devices []Device, index int) (Device, bool) {
