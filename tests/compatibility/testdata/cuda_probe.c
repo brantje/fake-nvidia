@@ -118,8 +118,9 @@ typedef struct {
     unsigned int memoryPoolSupportedHandleTypes;
     int deferredMappingCudaArraySupported;
     int ipcEventSupported;
+    int clusterLaunch;
     int unifiedFunctionPointers;
-    int reserved[56];
+    int reserved[63];
 } prop_view;
 
 #define LOAD(handle, name) \
@@ -261,8 +262,8 @@ int main(int argc, char **argv) {
         fail("runtime device properties mismatch");
     }
     if (prop.clockRate != 0) fail("unmodeled clockRate must be zero");
-    if (prop.unifiedFunctionPointers != 0) fail("unmodeled trailing capability was not initialized");
-    if (prop.reserved[55] != 0) fail("trailing cudaDeviceProp reserved field was not initialized");
+    if (prop.clusterLaunch != 0 || prop.unifiedFunctionPointers != 0) fail("unmodeled trailing capability was not initialized");
+    if (prop.reserved[62] != 0) fail("trailing cudaDeviceProp reserved field was not initialized");
 
     if (expected_count > 1) {
         require_result(cudaSetDevice(1), cudaSuccess, "cudaSetDevice(1)");
