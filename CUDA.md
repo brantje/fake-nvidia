@@ -44,7 +44,7 @@ Profile identity remains owned by the fake-nvidia profile catalog. Device names 
 | `cuDeviceGetAttribute` | Supports a small capability-check subset: thread/block/grid limits, shared/constant memory limits, warp size, unified addressing, compute capability, and managed-memory flag. Other attributes return `CUDA_ERROR_NOT_SUPPORTED`. |
 | `cuMemGetInfo`, `cuMemGetInfo_v2` | Returns effective free/total VRAM from Mock NVML state. |
 | `cuMemAlloc`, `cuMemAlloc_v2` | Reserves simulated VRAM and returns a tiny opaque host token; it does not allocate the requested amount of host RAM. |
-| `cuMemFree`, `cuMemFree_v2` | Releases a tracked simulated VRAM reservation. |
+| `cuMemFree`, `cuMemMemFree_v2` | Releases a tracked simulated VRAM reservation. |
 | `cuGetErrorName`, `cuGetErrorString` | Returns stable strings for the supported driver result set. |
 | `cuGetProcAddress`, `cuGetProcAddress_v2` | Resolves only the explicitly supported/explicitly-failing Phase 6 driver symbols. Unknown symbols return `CUDA_ERROR_NOT_FOUND`. |
 
@@ -57,7 +57,7 @@ Driver error values are kept distinct from runtime error values where CUDA defin
 | `cudaDriverGetVersion`, `cudaRuntimeGetVersion` | Reports the configured CUDA version. |
 | `cudaGetDeviceCount` | Returns the effective fake GPU count. |
 | `cudaSetDevice`, `cudaGetDevice` | Tracks the current device inside the consumer process. |
-| `cudaGetDeviceProperties`, `cudaGetDeviceProperties_v2` | Fills the stable prefix used for name, UUID, total memory, common launch limits, and compute capability. |
+| `cudaGetDeviceProperties`, `cudaGetDeviceProperties_v2` | Initializes the complete targeted CUDA 12.8 `cudaDeviceProp` layout. Modeled identity, memory, launch-limit, and compute-capability fields are populated; unmodeled capability fields are zero. |
 | `cudaMemGetInfo` | Returns effective free/total VRAM. |
 | `cudaMalloc` | Reserves simulated VRAM and returns a tiny opaque host token. |
 | `cudaFree` | Releases a tracked simulated allocation. `cudaFree(NULL)` succeeds. |
@@ -74,7 +74,7 @@ Capacity OOM is automatic: an allocation larger than the current effective free 
 For deterministic fault testing, set:
 
 ```bash
-FAKE_NVIDIA_CUDA_OOM_AFTER=N
+export FAKE_NVIDIA_CUDA_OOM_AFTER=N
 ```
 
 `N` is the number of successful CUDA allocations allowed in that process before subsequent allocations fail with OOM. Examples:
@@ -121,6 +121,7 @@ The compatibility suite builds a native C probe without CUDA headers and validat
 
 - driver and runtime discovery return the configured device count;
 - name, UUID, PCI identity, total VRAM, and compute capability are available;
+- the targeted CUDA 12.8 device-property structure is fully initialized, including trailing reserved fields;
 - current-device selection works;
 - driver/runtime memory-info agree;
 - `cudaMalloc` and `cuMemAlloc_v2` change memory seen by a separate `nvidia-smi` process;
