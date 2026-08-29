@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/brantje/fake-nvidia/internal/fakellama"
 )
@@ -73,6 +74,18 @@ func main() {
 		}
 	}()
 
+	// Phase 8 can hold the worker after the manager has planned and launched it
+	// but before the fake process reserves GPU resources. Releasing the gate after
+	// a live NVML mutation gives a deterministic plan-vs-launch race without
+	// sleeping for an assumed amount of scheduler time.
+	if err := waitForRegisterGate(ctx, os.Getenv("FAKE_LLAMA_REGISTER_GATE")); err != nil {
+		if errors.Is(err, context.Canceled) {
+			return
+		}
+		fmt.Fprintln(os.Stderr, "fake-llama-server:", err)
+		os.Exit(1)
+	}
+
 	if err := server.Run(ctx); err != nil {
 		fmt.Fprintln(os.Stderr, "fake-llama-server:", err)
 		if errors.Is(err, fakellama.ErrInjectedCrash) {
@@ -97,6 +110,30 @@ func handleInfoRequest(args []string, out io.Writer) bool {
 		}
 	}
 	return false
+}
+
+// waitForRegisterGate waits for a test-owned gate file before allowing the fake
+// worker to enter Server.Run, which is where it opens its listener and registers
+// fake GPU process/VRAM state. Empty paths disable the gate.
+func waitForRegisterGate(ctx context.Context, path string) error {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return nil
+	}
+	ticker := time.NewTicker(25 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		if _, err := os.Stat(path); err == nil {
+			return nil
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("inspect fake register gate %q: %w", path, err)
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+		}
+	}
 }
 
 // withManagerDeviceTargets translates the manager-owned llama.cpp --device
