@@ -98,11 +98,15 @@ func (r *NVMLRegistry) apply(ctx context.Context, pid uint32, name string, targe
 		}
 		oldBytes := uint64(0)
 		if existed {
-			if old.UsedMemoryMiB > math.MaxUint64/mib {
+			if old.UsedMemoryMiB > ^uint64(0)/mib {
 				r.rollback(ctx, pid, applied)
 				return errors.New("existing fake process memory overflows bytes")
 			}
 			oldBytes = old.UsedMemoryMiB * mib
+		}
+		if amounts[i] > ^uint64(0)/mib {
+			r.rollback(ctx, pid, applied)
+			return errors.New("requested fake process memory overflows bytes")
 		}
 		newBytes := amounts[i] * mib
 		if newBytes > oldBytes && newBytes-oldBytes > before.FreeBytes {
@@ -196,6 +200,9 @@ func withoutPID(processes []control.Process, pid uint32) []control.Process {
 }
 
 func splitProcessMiB(totalBytes uint64, targets []string, tensorSplit []float64) ([]uint64, error) {
+	if len(targets) == 0 {
+		return nil, errors.New("at least one target is required")
+	}
 	totalMiB := totalBytes / mib
 	if totalBytes%mib != 0 {
 		totalMiB++
@@ -219,9 +226,7 @@ func splitProcessMiB(totalBytes uint64, targets []string, tensorSplit []float64)
 		amounts[i] = uint64(math.Floor(float64(totalMiB) * weights[i] / sum))
 		assigned += amounts[i]
 	}
-	if len(targets) != 0 {
-		amounts[len(targets)-1] = totalMiB - assigned
-	}
+	amounts[len(targets)-1] = totalMiB - assigned
 	return amounts, nil
 }
 
