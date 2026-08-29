@@ -1,0 +1,51 @@
+# Standalone LlamaCPP-Manager + fake-nvidia example.
+#
+# From the fake-nvidia repository root:
+#
+#   make runtime
+#   go run ./cmd/fake-nvidia up \
+#     --profile rtx4060ti-16gb \
+#     --gpus 2 \
+#     --runtime-dir "$PWD/.runtime" \
+#     --root "$PWD/.fake-nvidia/llamacpp-manager"
+#
+#   export FAKE_NVIDIA_ROOT="$PWD/.fake-nvidia/llamacpp-manager"
+#   export PUID="$(id -u)" PGID="$(id -g)"
+#   docker compose -f examples/llamacpp-manager/docker-compose.yaml up -d
+#
+# Then open http://localhost:8080.
+#
+# This example deliberately does not use the NVIDIA Container Toolkit or expose
+# real GPU devices. LlamaCPP-Manager is unmodified; fake NVIDIA userspace and the
+# fake llama-server are injected through normal mounts/environment variables.
+services:
+  llamacpp-manager:
+    image: ${LLAMACPP_MANAGER_IMAGE:-ghcr.io/brantje/llamacpp-manager@sha256:1cbd6bf1d31893cdcdf6126e1e4239d39f1a903e4837251d0cd528d7a7a70586}
+    user: "${PUID:-1000}:${PGID:-1000}"
+    environment:
+      LCM_LISTEN_ADDR: ":8000"
+      LCM_DATA_DIR: /config
+      LCM_MODELS_DIR: /models
+      LCM_LLAMA_SERVER: /opt/fake-nvidia/runtime/bin/fake-llama-server
+      LCM_HOST_PROC: /host/proc
+      LCM_ALWAYS_ON_RECONCILE_SECONDS: ${LCM_ALWAYS_ON_RECONCILE_SECONDS:-15}
+
+      PATH: /opt/fake-nvidia/runtime/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+      LD_LIBRARY_PATH: /opt/fake-nvidia/runtime/lib
+      MOCK_NVML_CONFIG: /var/lib/fake-nvidia/config.yaml
+      MOCK_NVML_OVERRIDES: /var/lib/fake-nvidia/overrides.yaml
+    volumes:
+      - ${LCM_CONFIG_DIR:-./data/config}:/config
+      - ${LCM_MODELS_DIR:-./data/models}:/models
+      - ${FAKE_NVIDIA_ROOT:?run fake-nvidia up and export FAKE_NVIDIA_ROOT}/runtime:/opt/fake-nvidia/runtime:ro
+      - ${FAKE_NVIDIA_ROOT:?run fake-nvidia up and export FAKE_NVIDIA_ROOT}/state:/var/lib/fake-nvidia
+      - /proc:/host/proc:ro
+    ports:
+      - "${LCM_PORT:-8080}:8000"
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/llamacpp-manager", "healthcheck"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+    restart: unless-stopped
