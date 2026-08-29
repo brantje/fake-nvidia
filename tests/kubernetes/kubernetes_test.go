@@ -45,6 +45,10 @@ func TestPhase9Kind(t *testing.T) {
 	if node == "" {
 		t.Fatal("Kind cluster has no nodes")
 	}
+	labeledNodes := runCommand(t, root, nil, 30*time.Second, "kubectl", "get", "nodes", "-l", "fake-nvidia.com/enabled=true", "-o", "name")
+	if !strings.Contains(labeledNodes, "node/"+node) {
+		t.Fatalf("Kind node %s is missing required fake-nvidia.com/enabled=true label", node)
+	}
 
 	manifest := []byte(runCommand(t, root, nil, 2*time.Minute,
 		"go", "run", "./cmd/fake-nvidia", "kubernetes",
