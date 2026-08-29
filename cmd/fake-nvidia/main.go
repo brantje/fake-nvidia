@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/brantje/fake-nvidia/internal/config"
+	"github.com/brantje/fake-nvidia/internal/controlcli"
 	"github.com/brantje/fake-nvidia/internal/upstream"
 	"github.com/brantje/fake-nvidia/profiles"
 )
@@ -62,6 +64,8 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return err
 	case "render":
 		return runRender(catalog, args[1:], stdout, stderr)
+	case "ctl":
+		return controlcli.Run(context.Background(), args[1:], os.Stdin, stdout, stderr)
 	case "help", "-h", "--help":
 		return usage(stdout)
 	default:
@@ -184,7 +188,7 @@ func parseDevice(raw string) (config.DeviceRequest, error) {
 
 // usage implements the corresponding fake-nvidia operation.
 func usage(w io.Writer) error {
-	_, err := fmt.Fprint(w, `fake-nvidia Phase 1 profile/configuration tool
+	_, err := fmt.Fprint(w, `fake-nvidia profile/configuration and control tool
 
 usage:
   fake-nvidia profiles
@@ -194,9 +198,10 @@ usage:
   fake-nvidia render --device <profile[@MiB]> [--device ...]
   fake-nvidia render --topology <id>
   fake-nvidia render --spec <config.json>
+  fake-nvidia ctl <control command> [args...]
 
-render writes upstream Mock NVML YAML. Runtime mutation is deliberately delegated
-to NVIDIA's nvml-mock-ctl override mechanism.
+render writes upstream Mock NVML YAML. ctl composes the upstream nvml-mock-ctl
+override mechanism and is also available as the standalone fake-nvidia-ctl binary.
 `)
 	return err
 }

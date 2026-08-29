@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "base": {
+    "profile": "rtx4090-24gb"
+  },
+  "steps": [
+    {
+      "name": "gpu-lost-after-trigger",
+      "event": "inject-failure",
+      "do": {"args": ["gpu", "0", "failure", "lost"]}
+    }
+  ],
+  "cleanup": [
+    {"args": ["reset"]}
+  ]
+}
