@@ -44,7 +44,7 @@ type cdiDevice struct {
 // The node root is deliberately outside /dev so fake device nodes cannot replace
 // real NVIDIA device nodes on hosts that also contain physical GPUs.
 func GenerateCDISpec(kind, nodeRoot string, deviceCount int) ([]byte, error) {
-	if strings.TrimSpace(kind) == "" || !strings.Contains(kind, "/") {
+	if !validCDIKind(kind) {
 		return nil, fmt.Errorf("invalid CDI kind %q", kind)
 	}
 	if deviceCount <= 0 || deviceCount > 8 {
@@ -95,4 +95,51 @@ func GenerateCDISpec(kind, nodeRoot string, deviceCount int) ([]byte, error) {
 		return nil, err
 	}
 	return append(data, '\n'), nil
+}
+
+// validCDIKind validates the vendor DNS subdomain and single CDI name segment.
+func validCDIKind(kind string) bool {
+	if kind == "" || strings.TrimSpace(kind) != kind {
+		return false
+	}
+	parts := strings.Split(kind, "/")
+	return len(parts) == 2 && validDNSSubdomain(parts[0]) && validCDIName(parts[1])
+}
+
+// validDNSSubdomain validates the DNS-subdomain prefix required by CDI kinds.
+func validDNSSubdomain(value string) bool {
+	if len(value) == 0 || len(value) > 253 {
+		return false
+	}
+	for _, label := range strings.Split(value, ".") {
+		if len(label) == 0 || len(label) > 63 {
+			return false
+		}
+		for i, r := range label {
+			ok := r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '-'
+			if !ok || (r == '-' && (i == 0 || i == len(label)-1)) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// validCDIName validates the CDI kind name segment for spec version 0.6.0.
+func validCDIName(value string) bool {
+	if len(value) == 0 || len(value) > 63 || !isASCIIAlphanumeric(value[0]) || !isASCIIAlphanumeric(value[len(value)-1]) {
+		return false
+	}
+	for i := 1; i < len(value)-1; i++ {
+		c := value[i]
+		if !isASCIIAlphanumeric(c) && c != '-' && c != '_' && c != '.' {
+			return false
+		}
+	}
+	return true
+}
+
+// isASCIIAlphanumeric reports whether c is an ASCII letter or digit.
+func isASCIIAlphanumeric(c byte) bool {
+	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9'
 }
