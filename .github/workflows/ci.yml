@@ -20,7 +20,7 @@ jobs:
   go:
     name: Go checks
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
 
     steps:
       - name: Check out repository
@@ -35,6 +35,11 @@ jobs:
           go-version-file: go.mod
           cache: false
 
+      - name: Formatting
+        run: |
+          files="$(gofmt -l .)"
+          test -z "$files" || { printf 'gofmt required for:\n%s\n' "$files" >&2; exit 1; }
+
       - name: Unit tests
         run: go test ./...
 
@@ -44,10 +49,16 @@ jobs:
       - name: Vet
         run: go vet ./...
 
+      - name: Build every Go command
+        run: make build-all
+
+      - name: Validate release and profile contract
+        run: make profile-contract
+
   compatibility:
-    name: Mock NVML compatibility
+    name: Native and Docker compatibility
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
 
     steps:
       - name: Check out repository
@@ -65,11 +76,25 @@ jobs:
       - name: Verify Docker buildx
         run: docker buildx version
 
-      - name: Build pinned Mock NVML runtime
+      - name: Build pinned Mock NVML/CUDA runtime
         run: make runtime
 
-      - name: Run native compatibility tests
-        run: make compatibility
+      - name: Control and CLI compatibility smoke
+        run: FAKE_NVIDIA_RUNTIME_DIR="$PWD/.runtime" go test -tags=integration -run '^TestPhase4' -v ./tests/compatibility
 
-      - name: Run CPU-only Docker injection tests
-        run: make docker-integration
+      - name: CUDA shim supported-surface smoke
+        run: FAKE_NVIDIA_RUNTIME_DIR="$PWD/.runtime" go test -tags=integration -run '^TestPhase6' -v ./tests/compatibility
+
+      - name: Fake llama-server compatibility smoke
+        run: FAKE_NVIDIA_RUNTIME_DIR="$PWD/.runtime" go test -tags=integration -run '^TestPhase7' -v ./tests/compatibility
+
+      - name: Full nvidia-smi and native compatibility suite
+        run: |
+          test -x .runtime/bin/nvidia-smi
+          test -x .runtime/bin/fake-llama-server
+          test -f .runtime/lib/libcuda.so.1
+          test -f .runtime/lib/libcudart.so
+          FAKE_NVIDIA_RUNTIME_DIR="$PWD/.runtime" go test -tags=integration -v ./tests/compatibility
+
+      - name: CPU-only Docker image and injection suite
+        run: FAKE_NVIDIA_RUNTIME_DIR="$PWD/.runtime" go test -tags=docker_integration -v ./tests/docker

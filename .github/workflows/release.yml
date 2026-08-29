@@ -1,0 +1,248 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Release Go baseline
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Check out tagged source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify tag is merged to main
+        run: |
+          git fetch --no-tags origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" refs/remotes/origin/main; then
+            echo "release tag $GITHUB_REF_NAME points to $GITHUB_SHA, which is not in main history" >&2
+            exit 1
+          fi
+
+      - name: Set up Go
+        uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Formatting
+        run: |
+          files="$(gofmt -l .)"
+          test -z "$files" || { printf 'gofmt required for:\n%s\n' "$files" >&2; exit 1; }
+
+      - name: Unit tests
+        run: go test ./...
+
+      - name: Race tests
+        run: go test -race ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Build every Go command
+        run: make build-all
+
+      - name: Validate release and profile contract
+        run: make profile-contract
+
+  create-release:
+    name: Create draft release
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Check out tagged source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Render compatibility metadata
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: sed "s|\${FAKE_NVIDIA_VERSION}|${VERSION}|g" release/compatibility.template.json > compatibility.json
+
+      - name: Create draft GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ github.ref_name }}
+        run: |
+          gh release create "$VERSION" \
+            --draft \
+            --title "$VERSION" \
+            --target "$GITHUB_SHA" \
+            --generate-notes
+          gh release upload "$VERSION" compatibility.json
+
+  package:
+    name: Package ${{ matrix.goarch }}
+    needs: create-release
+    permissions:
+      contents: write
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goarch: amd64
+            runner: ubuntu-latest
+          - goarch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+
+    steps:
+      - name: Check out tagged source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Verify native runner architecture
+        env:
+          GOARCH_EXPECTED: ${{ matrix.goarch }}
+        run: test "$(go env GOARCH)" = "$GOARCH_EXPECTED"
+
+      - name: Build pure-Go release archive
+        env:
+          VERSION: ${{ github.ref_name }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          set -eu
+          name="fake-nvidia-${VERSION}-linux-${GOARCH}"
+          root="dist/${name}"
+          mkdir -p "$root/bin" "$root/examples" "$root/kubernetes"
+          CGO_ENABLED=0 GOOS=linux GOARCH="$GOARCH" go build -trimpath -ldflags='-s -w' -o "$root/bin/fake-nvidia" ./cmd/fake-nvidia
+          CGO_ENABLED=0 GOOS=linux GOARCH="$GOARCH" go build -trimpath -ldflags='-s -w' -o "$root/bin/fake-nvidia-ctl" ./cmd/fake-nvidia-ctl
+          CGO_ENABLED=0 GOOS=linux GOARCH="$GOARCH" go build -trimpath -ldflags='-s -w' -o "$root/bin/fake-llama-server" ./cmd/fake-llama-server
+          CGO_ENABLED=0 GOOS=linux GOARCH="$GOARCH" go build -trimpath -ldflags='-s -w' -o "$root/bin/fake-nvidia-k8s-installer" ./cmd/fake-nvidia-k8s-installer
+          cp -a examples/docker "$root/examples/docker"
+          cp -a examples/llamacpp-manager "$root/examples/llamacpp-manager"
+          cp -a kubernetes/examples "$root/kubernetes/examples"
+          cp README.md COMPATIBILITY.md RELEASING.md "$root/"
+          printf '%s\n' "$VERSION" > "$root/VERSION"
+          printf '%s\n' "$GITHUB_SHA" > "$root/SOURCE_COMMIT"
+          sed "s|\${FAKE_NVIDIA_VERSION}|${VERSION}|g" release/compatibility.template.json > "$root/compatibility.json"
+          tar -C dist -czf "dist/${name}.tar.gz" "$name"
+
+      - name: Build native runtime bundle
+        run: make runtime
+
+      - name: Test native compatibility on release architecture
+        run: |
+          test -x .runtime/bin/nvidia-smi
+          test -x .runtime/bin/fake-llama-server
+          test -f .runtime/lib/libcuda.so.1
+          test -f .runtime/lib/libcudart.so
+          FAKE_NVIDIA_RUNTIME_DIR="$PWD/.runtime" go test -tags=integration -v ./tests/compatibility
+
+      - name: Test Docker injection on release architecture
+        run: FAKE_NVIDIA_RUNTIME_DIR="$PWD/.runtime" go test -tags=docker_integration -v ./tests/docker
+
+      - name: Archive native runtime bundle
+        env:
+          VERSION: ${{ github.ref_name }}
+          GOARCH: ${{ matrix.goarch }}
+        run: tar -C .runtime -czf "dist/fake-nvidia-runtime-${VERSION}-linux-${GOARCH}.tar.gz" .
+
+      - name: Build release container image
+        env:
+          VERSION: ${{ github.ref_name }}
+          GOARCH: ${{ matrix.goarch }}
+          IMAGE: ghcr.io/${{ github.repository_owner }}/fake-nvidia
+        run: docker build -f kubernetes/Dockerfile -t "${IMAGE}:${VERSION}-${GOARCH}" .
+
+      - name: Push architecture container image
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ github.ref_name }}
+          GOARCH: ${{ matrix.goarch }}
+          IMAGE: ghcr.io/${{ github.repository_owner }}/fake-nvidia
+        run: |
+          printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          docker push "${IMAGE}:${VERSION}-${GOARCH}"
+
+      - name: Upload release archives
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ github.ref_name }}
+        run: gh release upload "$VERSION" dist/*.tar.gz
+
+  finalize:
+    name: Checksums, provenance, and multi-arch image
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    env:
+      GH_REPO: ${{ github.repository }}
+
+    steps:
+      - name: Download packaged release archives
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ github.ref_name }}
+        run: |
+          mkdir -p dist
+          gh release download "$VERSION" --pattern '*.tar.gz' --dir dist
+
+      - name: Generate checksums and provenance
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          (cd dist && sha256sum *.tar.gz | sort -k2) > SHA256SUMS
+          {
+            printf '# fake-nvidia build provenance\n\n'
+            printf -- '- Version: `%s`\n' "$VERSION"
+            printf -- '- Source commit: `%s`\n' "$GITHUB_SHA"
+            printf -- '- Repository: `%s`\n' "$GITHUB_REPOSITORY"
+            printf -- '- Workflow run: `%s/actions/runs/%s`\n' "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" "$GITHUB_RUN_ID"
+            printf -- '- Builder: GitHub Actions CPU-only Linux runners\n'
+            printf -- '- Architectures: `linux/amd64`, `linux/arm64`\n'
+          } > PROVENANCE.md
+
+      - name: Publish multi-arch container manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ github.ref_name }}
+          IMAGE: ghcr.io/${{ github.repository_owner }}/fake-nvidia
+        run: |
+          printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          docker manifest create "${IMAGE}:${VERSION}" "${IMAGE}:${VERSION}-amd64" "${IMAGE}:${VERSION}-arm64"
+          docker manifest push "${IMAGE}:${VERSION}"
+
+      - name: Upload checksums and provenance
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ github.ref_name }}
+        run: gh release upload "$VERSION" SHA256SUMS PROVENANCE.md
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ github.ref_name }}
+        run: gh release edit "$VERSION" --draft=false

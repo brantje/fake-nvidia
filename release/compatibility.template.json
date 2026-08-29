@@ -1,0 +1,40 @@
+{
+  "fake_nvidia_version": "${FAKE_NVIDIA_VERSION}",
+  "required_go_version": "1.23",
+  "mock_nvml": {
+    "repository": "NVIDIA/k8s-test-infra",
+    "revision": "f7bbbf025110c63c04567cf42e357af32fa2f62d",
+    "path": "pkg/gpu/mocknvml"
+  },
+  "mock_cuda": {
+    "repository": "NVIDIA/k8s-test-infra",
+    "revision": "f7bbbf025110c63c04567cf42e357af32fa2f62d",
+    "usage": "compatibility reference; fake-nvidia ships its own limited CUDA device/memory shim"
+  },
+  "nvidia_smi": {
+    "package": "nvidia-utils-580",
+    "version": "580.65.06-0ubuntu1",
+    "default_reported_driver": "580.173.02",
+    "default_reported_cuda": "13.0"
+  },
+  "architectures": [
+    "linux/amd64",
+    "linux/arm64"
+  ],
+  "llamacpp_manager": {
+    "revision": "0c26e8e19635c5047d06babc7ba3b0173570e6ce",
+    "image": "ghcr.io/brantje/llamacpp-manager@sha256:1cbd6bf1d31893cdcdf6126e1e4239d39f1a903e4837251d0cd528d7a7a70586"
+  },
+  "profiles": [
+    "rtx4060ti-16gb",
+    "rtx4090-24gb",
+    "t4-16gb",
+    "l40s-48gb",
+    "a100-40gb",
+    "h100-80gb"
+  ],
+  "topologies": [
+    "dual-rtx4060ti-16gb",
+    "mixed-gpu"
+  ]
+}

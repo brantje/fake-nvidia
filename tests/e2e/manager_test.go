@@ -571,12 +571,12 @@ func (h *managerHarness) createInstance(modelID, name string, evictionEnabled bo
 	h.t.Helper()
 	var response instanceResponse
 	h.requestJSON(http.MethodPost, "/api/v1/instances", map[string]any{
-		"model_id": modelID,
-		"name": name,
-		"enabled": true,
+		"model_id":         modelID,
+		"name":             name,
+		"enabled":          true,
 		"autoload_enabled": true,
 		"eviction_enabled": evictionEnabled,
-		"gpu_mode": "auto",
+		"gpu_mode":         "auto",
 	}, http.StatusCreated, &response)
 	if response.ID == "" || response.ModelID != modelID {
 		h.t.Fatalf("unexpected instance response: %+v", response)
