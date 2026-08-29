@@ -139,6 +139,9 @@ func TestPhase7FakeLlamaServerInjectedOOM(t *testing.T) {
 	)
 	cmd.Env = bundle.Environment(os.Environ(), configPath, overridesPath)
 	out, err := cmd.CombinedOutput()
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		t.Fatalf("injected OOM process hung until timeout: %s", out)
+	}
 	if err == nil {
 		t.Fatalf("injected OOM unexpectedly succeeded: %s", out)
 	}
@@ -154,6 +157,7 @@ func TestPhase7FakeLlamaServerInjectedOOM(t *testing.T) {
 	}
 }
 
+// freeTCPPort reserves an ephemeral loopback port long enough to discover its number.
 func freeTCPPort(t *testing.T) int {
 	t.Helper()
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -164,6 +168,7 @@ func freeTCPPort(t *testing.T) int {
 	return listener.Addr().(*net.TCPAddr).Port
 }
 
+// waitPhase7Ready polls the manager-facing health endpoint until it returns 2xx.
 func waitPhase7Ready(t *testing.T, ctx context.Context, base string, logs *bytes.Buffer) {
 	t.Helper()
 	client := &http.Client{Timeout: time.Second}
