@@ -2,6 +2,7 @@ package cuda
 
 import "testing"
 
+// TestParseCUDAVersionRejectsInvalidFormats verifies only strict major.minor versions are accepted.
 func TestParseCUDAVersionRejectsInvalidFormats(t *testing.T) {
 	for _, input := range []string{
 		"12",
