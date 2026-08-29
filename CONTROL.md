@@ -169,4 +169,6 @@ The runner ignores unrelated event names until the requested event arrives. This
 
 ## Concurrency
 
-Multiple `fake-nvidia-ctl` processes may mutate the same override file. Fake-nvidia does not add its own lock; all writes continue to go through `nvml-mock-ctl`, which owns the file-locking and atomic-write contract. CPU-only integration coverage exercises concurrent writers and verifies the resulting state remains readable by a separate `nvidia-smi` process.
+Memory and process operations are effective-state read-modify-write transactions, so separate `fake-nvidia-ctl` processes coordinate those transactions with a sibling flock before observing state and keep it held through the delegated upstream mutation. Process changes are rebased onto the fresh process list while that lock is held: unrelated concurrent PID changes are preserved, while conflicting changes to the same PID return an error instead of silently overwriting state.
+
+The override document itself is still written only by `nvml-mock-ctl`; its own file lock, validation, and atomic rename remain authoritative for the on-disk format. CPU-only integration coverage exercises concurrent writers and verifies the resulting state remains readable by a separate `nvidia-smi` process.
