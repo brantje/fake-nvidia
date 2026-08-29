@@ -79,6 +79,9 @@ func TestPhase8PerInstanceTelemetryWebSocket(t *testing.T) {
 	}}); err != nil {
 		t.Fatal(err)
 	}
+	if err := conn.SetReadDeadline(time.Now().Add(20 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
 
 	for {
 		updated := readInstanceTelemetry(t, reader, instanceID)
