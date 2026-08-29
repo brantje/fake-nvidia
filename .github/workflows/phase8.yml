@@ -43,6 +43,13 @@ jobs:
       - name: Verify Docker buildx
         run: docker buildx version
 
+      - name: Validate standalone Compose example
+        env:
+          FAKE_NVIDIA_ROOT: /tmp/fake-nvidia-example
+          PUID: 1000
+          PGID: 1000
+        run: docker compose -f examples/llamacpp-manager/docker-compose.yaml config >/dev/null
+
       - name: Log in to GHCR
         uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567 # v3.3.0
         with:
