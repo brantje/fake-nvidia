@@ -141,28 +141,37 @@ func (m *Manager) ReplaceProcesses(ctx context.Context, target string, processes
 }
 
 // ReplaceProcessesFromState reconciles processes using a snapshot already read
-// by the caller. This keeps one CLI mutation tied to one effective-state read.
+// by the caller. Callers that mutate the snapshot's process slice in place are
+// detected and re-observed so memory accounting still uses the pre-mutation row.
 func (m *Manager) ReplaceProcessesFromState(ctx context.Context, target string, device DeviceState, processes []Process) error {
 	if m == nil || m.Client == nil {
 		return errors.New("control client is required")
 	}
-	currentProcessBytes, err := processBytes(device.Processes)
+	current := device
+	if m.Observer != nil && processListsEqual(device.Processes, processes) {
+		observed, err := m.device(ctx, target)
+		if err != nil {
+			return err
+		}
+		current = observed
+	}
+	currentProcessBytes, err := processBytes(current.Processes)
 	if err != nil {
 		return err
 	}
-	if currentProcessBytes > device.UsedBytes {
+	if currentProcessBytes > current.UsedBytes {
 		return errors.New("process-owned memory exceeds effective used memory")
 	}
-	nonProcessUsed := device.UsedBytes - currentProcessBytes
+	nonProcessUsed := current.UsedBytes - currentProcessBytes
 	reservedBytes := uint64(0)
-	visible, err := addBytes(device.UsedBytes, device.FreeBytes)
+	visible, err := addBytes(current.UsedBytes, current.FreeBytes)
 	if err != nil {
 		return err
 	}
-	if visible <= device.TotalBytes {
-		reservedBytes = device.TotalBytes - visible
+	if visible <= current.TotalBytes {
+		reservedBytes = current.TotalBytes - visible
 	}
-	return m.Client.SetProcessesReconciled(ctx, target, processes, device.TotalBytes, reservedBytes, nonProcessUsed)
+	return m.Client.SetProcessesReconciled(ctx, target, processes, current.TotalBytes, reservedBytes, nonProcessUsed)
 }
 
 // Snapshot returns the effective state used by the control UX.
@@ -197,6 +206,18 @@ func (m *Manager) withMutationLock(fn func() error) error {
 	}
 	defer func() { _ = syscall.Flock(int(lock.Fd()), syscall.LOCK_UN) }()
 	return fn()
+}
+
+func processListsEqual(a, b []Process) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func processBytes(processes []Process) (uint64, error) {
