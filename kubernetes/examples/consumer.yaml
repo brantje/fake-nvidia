@@ -6,6 +6,8 @@ metadata:
     app.kubernetes.io/part-of: fake-nvidia-phase9
 spec:
   restartPolicy: Never
+  nodeSelector:
+    fake-nvidia.com/enabled: "true"
   tolerations:
     - operator: Exists
   containers:
