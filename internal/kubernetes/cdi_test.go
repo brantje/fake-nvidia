@@ -26,6 +26,12 @@ func TestGenerateCDISpec(t *testing.T) {
 	}
 }
 
+func TestGenerateCDISpecAcceptsCDINameCharacters(t *testing.T) {
+	if _, err := GenerateCDISpec("foo.bar.baz/foo-bar123.B_az", "/var/lib/fake-nvidia", 1); err != nil {
+		t.Fatalf("valid CDI kind rejected: %v", err)
+	}
+}
+
 func TestGenerateCDISpecRejectsUnsafeInputs(t *testing.T) {
 	for _, tc := range []struct {
 		kind  string
@@ -33,6 +39,12 @@ func TestGenerateCDISpecRejectsUnsafeInputs(t *testing.T) {
 		count int
 	}{
 		{"gpu", "/var/lib/fake-nvidia", 1},
+		{"vendor.com/", "/var/lib/fake-nvidia", 1},
+		{"vendor.com/gpu/extra", "/var/lib/fake-nvidia", 1},
+		{"Vendor.com/gpu", "/var/lib/fake-nvidia", 1},
+		{"vendor..com/gpu", "/var/lib/fake-nvidia", 1},
+		{"vendor.com/-gpu", "/var/lib/fake-nvidia", 1},
+		{"vendor.com/gpu_", "/var/lib/fake-nvidia", 1},
 		{"nvidia.com/gpu", "relative", 1},
 		{"nvidia.com/gpu", "/", 1},
 		{"nvidia.com/gpu", "/var/lib/fake-nvidia", 0},
