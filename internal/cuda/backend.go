@@ -123,6 +123,8 @@ func (b *ControlBackend) CUDAVersion() int {
 	return b.cudaVersion
 }
 
+// configuredCUDAVersion reads the configured major.minor CUDA version from the
+// explicit override or generated Mock NVML configuration.
 func configuredCUDAVersion(configPath string) (int, error) {
 	if raw := strings.TrimSpace(os.Getenv("FAKE_NVIDIA_CUDA_VERSION")); raw != "" {
 		return parseCUDAVersion(raw)
@@ -152,6 +154,8 @@ func configuredCUDAVersion(configPath string) (int, error) {
 	return defaultCUDAVersion, nil
 }
 
+// parseCUDAVersion converts a strict major.minor version into CUDA's packed
+// integer representation, for example 12.8 -> 12080.
 func parseCUDAVersion(raw string) (int, error) {
 	parts := strings.Split(strings.TrimSpace(raw), ".")
 	if len(parts) != 2 {
@@ -168,11 +172,13 @@ func parseCUDAVersion(raw string) (int, error) {
 	return major*1000 + minor*10, nil
 }
 
+// stablePCIBusID derives a deterministic fake PCI bus identifier from a device index.
 func stablePCIBusID(index int) string {
 	n := index + 1
 	return fmt.Sprintf("%04x:%02x:00.0", n/256, n%256)
 }
 
+// envOr returns a trimmed environment value or fallback when it is unset.
 func envOr(key, fallback string) string {
 	if value := strings.TrimSpace(os.Getenv(key)); value != "" {
 		return value
