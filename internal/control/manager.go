@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"syscall"
 )
 
@@ -131,47 +132,59 @@ func (m *Manager) ReleaseMemory(ctx context.Context, target string, delta uint64
 }
 
 // ReplaceProcesses reconciles the supplied process list with current effective
-// device memory, preserving non-process/system usage.
+// device memory while the same mutation lock used by memory operations is held.
 func (m *Manager) ReplaceProcesses(ctx context.Context, target string, processes []Process) error {
-	device, err := m.device(ctx, target)
-	if err != nil {
-		return err
-	}
-	return m.ReplaceProcessesFromState(ctx, target, device, processes)
-}
-
-// ReplaceProcessesFromState reconciles processes using a snapshot already read
-// by the caller. Callers that mutate the snapshot's process slice in place are
-// detected and re-observed so memory accounting still uses the pre-mutation row.
-func (m *Manager) ReplaceProcessesFromState(ctx context.Context, target string, device DeviceState, processes []Process) error {
-	if m == nil || m.Client == nil {
-		return errors.New("control client is required")
-	}
-	current := device
-	if m.Observer != nil && processListsEqual(device.Processes, processes) {
-		observed, err := m.device(ctx, target)
+	return m.withMutationLock(func() error {
+		device, err := m.device(ctx, target)
 		if err != nil {
 			return err
 		}
-		current = observed
+		return m.reconcileProcessesFromState(ctx, target, device, processes)
+	})
+}
+
+// ReplaceProcessesFromState applies the caller's process-list changes to a
+// fresh effective-state snapshot before reconciling memory. When cross-process
+// locking is enabled, this preserves concurrent changes to unrelated PIDs and
+// detects conflicting changes to the same PID instead of overwriting them.
+func (m *Manager) ReplaceProcessesFromState(ctx context.Context, target string, before DeviceState, desired []Process) error {
+	if m == nil || m.Client == nil {
+		return errors.New("control client is required")
 	}
-	currentProcessBytes, err := processBytes(current.Processes)
+	if m.MutationLockPath == "" {
+		return m.reconcileProcessesFromState(ctx, target, before, desired)
+	}
+	return m.withMutationLock(func() error {
+		current, err := m.device(ctx, target)
+		if err != nil {
+			return err
+		}
+		rebased, err := rebaseProcesses(before.Processes, desired, current.Processes)
+		if err != nil {
+			return err
+		}
+		return m.reconcileProcessesFromState(ctx, target, current, rebased)
+	})
+}
+
+func (m *Manager) reconcileProcessesFromState(ctx context.Context, target string, device DeviceState, processes []Process) error {
+	currentProcessBytes, err := processBytes(device.Processes)
 	if err != nil {
 		return err
 	}
-	if currentProcessBytes > current.UsedBytes {
+	if currentProcessBytes > device.UsedBytes {
 		return errors.New("process-owned memory exceeds effective used memory")
 	}
-	nonProcessUsed := current.UsedBytes - currentProcessBytes
+	nonProcessUsed := device.UsedBytes - currentProcessBytes
 	reservedBytes := uint64(0)
-	visible, err := addBytes(current.UsedBytes, current.FreeBytes)
+	visible, err := addBytes(device.UsedBytes, device.FreeBytes)
 	if err != nil {
 		return err
 	}
-	if visible <= current.TotalBytes {
-		reservedBytes = current.TotalBytes - visible
+	if visible <= device.TotalBytes {
+		reservedBytes = device.TotalBytes - visible
 	}
-	return m.Client.SetProcessesReconciled(ctx, target, processes, current.TotalBytes, reservedBytes, nonProcessUsed)
+	return m.Client.SetProcessesReconciled(ctx, target, processes, device.TotalBytes, reservedBytes, nonProcessUsed)
 }
 
 // Snapshot returns the effective state used by the control UX.
@@ -196,6 +209,9 @@ func (m *Manager) withMutationLock(fn func() error) error {
 	if m.MutationLockPath == "" {
 		return fn()
 	}
+	if err := os.MkdirAll(filepath.Dir(m.MutationLockPath), 0o755); err != nil {
+		return fmt.Errorf("create mutation lock directory: %w", err)
+	}
 	lock, err := os.OpenFile(m.MutationLockPath, os.O_CREATE|os.O_RDWR, 0o644)
 	if err != nil {
 		return fmt.Errorf("open mutation lock: %w", err)
@@ -208,16 +224,79 @@ func (m *Manager) withMutationLock(fn func() error) error {
 	return fn()
 }
 
-func processListsEqual(a, b []Process) bool {
-	if len(a) != len(b) {
-		return false
+func rebaseProcesses(before, desired, current []Process) ([]Process, error) {
+	beforeByPID, err := processesByPID(before)
+	if err != nil {
+		return nil, fmt.Errorf("previous process list: %w", err)
 	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
+	desiredByPID, err := processesByPID(desired)
+	if err != nil {
+		return nil, fmt.Errorf("desired process list: %w", err)
+	}
+	if _, err := processesByPID(current); err != nil {
+		return nil, fmt.Errorf("current process list: %w", err)
+	}
+
+	result := append([]Process(nil), current...)
+	for _, previous := range before {
+		if _, keep := desiredByPID[previous.PID]; keep {
+			continue
+		}
+		index := processIndex(result, previous.PID)
+		if index < 0 {
+			return nil, fmt.Errorf("process %d changed concurrently: no longer exists", previous.PID)
+		}
+		if result[index] != previous {
+			return nil, fmt.Errorf("process %d changed concurrently", previous.PID)
+		}
+		result = append(result[:index], result[index+1:]...)
+	}
+
+	for _, wanted := range desired {
+		previous, existed := beforeByPID[wanted.PID]
+		if !existed || wanted == previous {
+			continue
+		}
+		index := processIndex(result, wanted.PID)
+		if index < 0 {
+			return nil, fmt.Errorf("process %d changed concurrently: no longer exists", wanted.PID)
+		}
+		if result[index] != previous {
+			return nil, fmt.Errorf("process %d changed concurrently", wanted.PID)
+		}
+		result[index] = wanted
+	}
+
+	for _, wanted := range desired {
+		if _, existed := beforeByPID[wanted.PID]; existed {
+			continue
+		}
+		if processIndex(result, wanted.PID) >= 0 {
+			return nil, fmt.Errorf("process %d changed concurrently: already exists", wanted.PID)
+		}
+		result = append(result, wanted)
+	}
+	return result, nil
+}
+
+func processesByPID(processes []Process) (map[uint32]Process, error) {
+	out := make(map[uint32]Process, len(processes))
+	for _, process := range processes {
+		if _, exists := out[process.PID]; exists {
+			return nil, fmt.Errorf("duplicate process pid %d", process.PID)
+		}
+		out[process.PID] = process
+	}
+	return out, nil
+}
+
+func processIndex(processes []Process, pid uint32) int {
+	for i := range processes {
+		if processes[i].PID == pid {
+			return i
 		}
 	}
-	return true
+	return -1
 }
 
 func processBytes(processes []Process) (uint64, error) {
