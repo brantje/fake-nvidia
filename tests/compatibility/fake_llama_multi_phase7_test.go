@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"os/exec"
 	"strconv"
@@ -22,6 +23,7 @@ type runningFakeLlama struct {
 	cmd  *exec.Cmd
 	logs bytes.Buffer
 	base string
+	done chan error
 }
 
 // TestPhase7MultipleFakeLlamaServers verifies multiple real child processes can
@@ -88,28 +90,81 @@ func TestPhase7MultipleFakeLlamaServers(t *testing.T) {
 	}
 }
 
+// startFakeLlama launches one fake worker with the common GPU/VRAM controls.
 func startFakeLlama(t *testing.T, ctx context.Context, bundle runtimebundle.Bundle, configPath, overridesPath, gpu, vram string) *runningFakeLlama {
 	t.Helper()
-	port := freeTCPPort(t)
-	server := &runningFakeLlama{}
-	server.cmd = exec.CommandContext(ctx, bundle.FakeLlamaServer(),
-		"--model", "/models/multi.gguf",
-		"--host", "127.0.0.1",
-		"--port", strconv.Itoa(port),
+	return startFakeLlamaWithArgs(t, ctx, bundle, configPath, overridesPath,
 		"--fake-gpus", gpu,
 		"--fake-vram", vram,
 	)
-	server.cmd.Env = bundle.Environment(os.Environ(), configPath, overridesPath)
-	server.cmd.Stdout = &server.logs
-	server.cmd.Stderr = &server.logs
-	if err := server.cmd.Start(); err != nil {
-		t.Fatal(err)
-	}
-	server.base = fmt.Sprintf("http://127.0.0.1:%d", port)
-	waitPhase7Ready(t, ctx, server.base, &server.logs)
-	return server
 }
 
+// startFakeLlamaWithArgs retries the complete candidate-port/start/readiness
+// sequence only when the child loses the inherently racy bind between probing a
+// free port and starting the process. Other startup failures are fatal.
+func startFakeLlamaWithArgs(t *testing.T, ctx context.Context, bundle runtimebundle.Bundle, configPath, overridesPath string, extraArgs ...string) *runningFakeLlama {
+	t.Helper()
+	const attempts = 5
+	for attempt := 1; attempt <= attempts; attempt++ {
+		port := pickFreeTCPPort(t)
+		args := []string{
+			"--model", "/models/fake-test.gguf",
+			"--host", "127.0.0.1",
+			"--port", strconv.Itoa(port),
+		}
+		args = append(args, extraArgs...)
+		server := &runningFakeLlama{done: make(chan error, 1)}
+		server.cmd = exec.CommandContext(ctx, bundle.FakeLlamaServer(), args...)
+		server.cmd.Env = bundle.Environment(os.Environ(), configPath, overridesPath)
+		server.cmd.Stdout = &server.logs
+		server.cmd.Stderr = &server.logs
+		if err := server.cmd.Start(); err != nil {
+			t.Fatalf("start fake llama-server: %v", err)
+		}
+		go func() { server.done <- server.cmd.Wait() }()
+		server.base = fmt.Sprintf("http://127.0.0.1:%d", port)
+		if err := waitFakeLlamaReady(ctx, server); err == nil {
+			return server
+		} else if strings.Contains(strings.ToLower(server.logs.String()), "address already in use") {
+			stopFakeLlamaBestEffort(server)
+			continue
+		} else {
+			stopFakeLlamaBestEffort(server)
+			t.Fatalf("fake llama-server failed before readiness: %v logs=%s", err, server.logs.String())
+		}
+	}
+	t.Fatalf("fake llama-server could not bind a candidate port after %d attempts", attempts)
+	return nil
+}
+
+// waitFakeLlamaReady polls health while also detecting an early child exit.
+func waitFakeLlamaReady(ctx context.Context, server *runningFakeLlama) error {
+	client := &http.Client{Timeout: time.Second}
+	ticker := time.NewTicker(25 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, server.base+"/health", nil)
+		if err != nil {
+			return err
+		}
+		resp, err := client.Do(req)
+		if err == nil {
+			_ = resp.Body.Close()
+			if resp.StatusCode == http.StatusOK {
+				return nil
+			}
+		}
+		select {
+		case err := <-server.done:
+			return fmt.Errorf("process exited before readiness: %w", err)
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+		}
+	}
+}
+
+// stopFakeLlama sends SIGTERM and requires the child to exit cleanly.
 func stopFakeLlama(t *testing.T, server *runningFakeLlama) {
 	t.Helper()
 	if server == nil || server.cmd == nil || server.cmd.Process == nil {
@@ -118,10 +173,8 @@ func stopFakeLlama(t *testing.T, server *runningFakeLlama) {
 	if err := server.cmd.Process.Signal(syscall.SIGTERM); err != nil {
 		t.Fatal(err)
 	}
-	done := make(chan error, 1)
-	go func() { done <- server.cmd.Wait() }()
 	select {
-	case err := <-done:
+	case err := <-server.done:
 		if err != nil {
 			t.Fatalf("fake llama-server pid %d exit: %v logs=%s", server.cmd.Process.Pid, err, server.logs.String())
 		}
@@ -131,15 +184,20 @@ func stopFakeLlama(t *testing.T, server *runningFakeLlama) {
 	server.cmd = nil
 }
 
+// stopFakeLlamaBestEffort force-stops a helper process during test cleanup.
 func stopFakeLlamaBestEffort(server *runningFakeLlama) {
 	if server == nil || server.cmd == nil || server.cmd.Process == nil {
 		return
 	}
 	_ = server.cmd.Process.Kill()
-	_, _ = server.cmd.Process.Wait()
+	select {
+	case <-server.done:
+	case <-time.After(2 * time.Second):
+	}
 	server.cmd = nil
 }
 
+// containsProcessPID reports whether a compute-process row contains pid.
 func containsProcessPID(rows [][]string, pid int) bool {
 	want := strconv.Itoa(pid)
 	for _, row := range rows {
