@@ -70,3 +70,6 @@ jobs:
 
       - name: Run native compatibility tests
         run: make compatibility
+
+      - name: Run CPU-only Docker injection tests
+        run: make docker-integration

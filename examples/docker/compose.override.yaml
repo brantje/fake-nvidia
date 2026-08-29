@@ -1,0 +1,12 @@
+services:
+  consumer:
+    environment:
+      LD_LIBRARY_PATH: /opt/fake-nvidia/lib
+      MOCK_NVML_CONFIG: /var/lib/fake-nvidia/config.yaml
+      MOCK_NVML_OVERRIDES: /var/lib/fake-nvidia/overrides.yaml
+    volumes:
+      - ${FAKE_NVIDIA_ROOT:?run fake-nvidia up first}/runtime/bin/nvidia-smi:/usr/local/bin/nvidia-smi:ro
+      - ${FAKE_NVIDIA_ROOT:?run fake-nvidia up first}/runtime/bin/nvidia-smi.real:/usr/local/bin/nvidia-smi.real:ro
+      - ${FAKE_NVIDIA_ROOT:?run fake-nvidia up first}/runtime/bin/nvml-mock-ctl:/usr/local/bin/nvml-mock-ctl:ro
+      - ${FAKE_NVIDIA_ROOT:?run fake-nvidia up first}/runtime/lib:/opt/fake-nvidia/lib:ro
+      - ${FAKE_NVIDIA_ROOT:?run fake-nvidia up first}/state:/var/lib/fake-nvidia
