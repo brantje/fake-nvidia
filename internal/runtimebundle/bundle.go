@@ -62,6 +62,28 @@ func (b Bundle) Validate() error {
 			return fmt.Errorf("runtime bundle artifact is not executable: %s", artifact.path)
 		}
 	}
+
+	for _, alias := range []string{
+		filepath.Join(b.LibraryDir(), "libcuda.so"),
+		filepath.Join(b.LibraryDir(), "libcudart.so.12"),
+		filepath.Join(b.LibraryDir(), "libcudart.so.13"),
+		filepath.Join(b.LibraryDir(), "libcudart.so"),
+	} {
+		info, err := os.Lstat(alias)
+		if err != nil {
+			return fmt.Errorf("runtime bundle missing CUDA alias %s: %w", alias, err)
+		}
+		if info.Mode()&os.ModeSymlink == 0 {
+			return fmt.Errorf("runtime bundle CUDA alias is not a symlink: %s", alias)
+		}
+		target, err := os.Stat(alias)
+		if err != nil {
+			return fmt.Errorf("runtime bundle CUDA alias is broken %s: %w", alias, err)
+		}
+		if !target.Mode().IsRegular() {
+			return fmt.Errorf("runtime bundle CUDA alias target is not a regular file: %s", alias)
+		}
+	}
 	return nil
 }
 
