@@ -14,23 +14,7 @@ func TestValidateRequiresRuntimeArtifacts(t *testing.T) {
 	if err := b.Validate(); err == nil {
 		t.Fatal("expected missing-artifact error")
 	}
-	for _, artifact := range []struct {
-		path string
-		mode os.FileMode
-	}{
-		{path: b.NvidiaSMI(), mode: 0o755},
-		{path: b.RealNvidiaSMI(), mode: 0o755},
-		{path: b.Control(), mode: 0o755},
-		{path: filepath.Join(b.LibraryDir(), "libnvidia-ml.so.1"), mode: 0o644},
-		{path: b.CUDA(), mode: 0o755},
-	} {
-		if err := os.MkdirAll(filepath.Dir(artifact.path), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(artifact.path, []byte("fixture"), artifact.mode); err != nil {
-			t.Fatal(err)
-		}
-	}
+	writeBundleFixture(t, b, 0o755)
 	if err := b.Validate(); err != nil {
 		t.Fatal(err)
 	}
@@ -40,23 +24,7 @@ func TestValidateRequiresRuntimeArtifacts(t *testing.T) {
 func TestValidateRejectsNonExecutableBinaries(t *testing.T) {
 	root := t.TempDir()
 	b := New(root)
-	for _, artifact := range []struct {
-		path string
-		mode os.FileMode
-	}{
-		{path: b.NvidiaSMI(), mode: 0o644},
-		{path: b.RealNvidiaSMI(), mode: 0o755},
-		{path: b.Control(), mode: 0o755},
-		{path: filepath.Join(b.LibraryDir(), "libnvidia-ml.so.1"), mode: 0o644},
-		{path: b.CUDA(), mode: 0o755},
-	} {
-		if err := os.MkdirAll(filepath.Dir(artifact.path), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(artifact.path, []byte("fixture"), artifact.mode); err != nil {
-			t.Fatal(err)
-		}
-	}
+	writeBundleFixture(t, b, 0o644)
 	if err := b.Validate(); err == nil || !strings.Contains(err.Error(), "not executable") {
 		t.Fatalf("err=%v", err)
 	}
@@ -71,6 +39,31 @@ func TestValidateRejectsDirectoryArtifacts(t *testing.T) {
 	}
 	if err := b.Validate(); err == nil || !strings.Contains(err.Error(), "not a regular file") {
 		t.Fatalf("err=%v", err)
+	}
+}
+
+// TestValidateRejectsMissingOrBrokenCUDAAliases verifies every packaged CUDA alias is usable.
+func TestValidateRejectsMissingOrBrokenCUDAAliases(t *testing.T) {
+	aliases := []string{"libcuda.so", "libcudart.so.12", "libcudart.so.13", "libcudart.so"}
+	for _, name := range aliases {
+		t.Run(name, func(t *testing.T) {
+			b := New(t.TempDir())
+			writeBundleFixture(t, b, 0o755)
+			alias := filepath.Join(b.LibraryDir(), name)
+			if err := os.Remove(alias); err != nil {
+				t.Fatal(err)
+			}
+			if err := b.Validate(); err == nil || !strings.Contains(err.Error(), "missing CUDA alias") {
+				t.Fatalf("missing alias err=%v", err)
+			}
+
+			if err := os.Symlink("missing-target.so", alias); err != nil {
+				t.Fatal(err)
+			}
+			if err := b.Validate(); err == nil || !strings.Contains(err.Error(), "CUDA alias is broken") {
+				t.Fatalf("broken alias err=%v", err)
+			}
+		})
 	}
 }
 
@@ -113,6 +106,37 @@ func TestEnvironmentCanClearMockPaths(t *testing.T) {
 	}
 	if _, ok := values[OverridesEnv]; ok {
 		t.Fatalf("%s unexpectedly present", OverridesEnv)
+	}
+}
+
+func writeBundleFixture(t *testing.T, b Bundle, nvidiaSMIMode os.FileMode) {
+	t.Helper()
+	for _, artifact := range []struct {
+		path string
+		mode os.FileMode
+	}{
+		{path: b.NvidiaSMI(), mode: nvidiaSMIMode},
+		{path: b.RealNvidiaSMI(), mode: 0o755},
+		{path: b.Control(), mode: 0o755},
+		{path: filepath.Join(b.LibraryDir(), "libnvidia-ml.so.1"), mode: 0o644},
+		{path: b.CUDA(), mode: 0o755},
+	} {
+		if err := os.MkdirAll(filepath.Dir(artifact.path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(artifact.path, []byte("fixture"), artifact.mode); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for name, target := range map[string]string{
+		"libcuda.so":      "libcuda.so.1",
+		"libcudart.so.12": "libcuda.so.1",
+		"libcudart.so.13": "libcuda.so.1",
+		"libcudart.so":    "libcudart.so.13",
+	} {
+		if err := os.Symlink(target, filepath.Join(b.LibraryDir(), name)); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 
