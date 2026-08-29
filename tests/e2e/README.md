@@ -8,9 +8,10 @@ Phase 8 is pinned to:
 
 - Repository: `brantje/llamacpp-manager`
 - Revision: `0c26e8e19635c5047d06babc7ba3b0173570e6ce`
-- Image: `ghcr.io/brantje/llamacpp-manager:main-0c26e8e`
+- Revision tag: `ghcr.io/brantje/llamacpp-manager:main-0c26e8e`
+- Immutable image: `ghcr.io/brantje/llamacpp-manager@sha256:1cbd6bf1d31893cdcdf6126e1e4239d39f1a903e4837251d0cd528d7a7a70586`
 
-The Phase 8 GitHub Actions workflow also records the pulled image digest in the job summary. `LLAMACPP_MANAGER_IMAGE` can be overridden deliberately for compatibility checks, but advancing the default pin must update the revision, image tag, workflow metadata, and this document together.
+The Phase 8 GitHub Actions workflow pulls the immutable image digest and records it in the job summary. `LLAMACPP_MANAGER_IMAGE` can be overridden deliberately for compatibility checks, but advancing the default pin must update the revision, image digest, workflow metadata, and this document together.
 
 ## Boundary
 
