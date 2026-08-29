@@ -27,15 +27,14 @@ func NewManager(client *Client, observer *Observer) *Manager {
 	if client == nil {
 		return m
 	}
+	if _, ok := client.Runner.(ExecRunner); !ok {
+		return m
+	}
 	path := client.OverrideFile
 	if path == "" {
-		if _, ok := client.Runner.(ExecRunner); ok {
-			path = defaultOverrideFile
-		}
+		path = defaultOverrideFile
 	}
-	if path != "" {
-		m.MutationLockPath = path + ".fake-nvidia-memory.lock"
-	}
+	m.MutationLockPath = path + ".fake-nvidia-memory.lock"
 	return m
 }
 
