@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/brantje/fake-nvidia/internal/runtimebundle"
 )
@@ -160,10 +161,10 @@ func validateSeparation(root, runtimeRoot string) error {
 
 func within(parent, child string) bool {
 	rel, err := filepath.Rel(parent, child)
-	if err != nil || rel == "." {
-		return rel == "."
+	if err != nil || filepath.IsAbs(rel) {
+		return false
 	}
-	return rel != ".." && !filepath.IsAbs(rel) && len(rel) >= 3 && rel[:3] != ".."+string(os.PathSeparator)
+	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator)))
 }
 
 func requireOwnedOrAbsent(root string) error {
