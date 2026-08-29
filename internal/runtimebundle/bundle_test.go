@@ -118,6 +118,7 @@ func writeBundleFixture(t *testing.T, b Bundle, nvidiaSMIMode os.FileMode) {
 		{path: b.NvidiaSMI(), mode: nvidiaSMIMode},
 		{path: b.RealNvidiaSMI(), mode: 0o755},
 		{path: b.Control(), mode: 0o755},
+		{path: b.FakeLlamaServer(), mode: 0o755},
 		{path: filepath.Join(b.LibraryDir(), "libnvidia-ml.so.1"), mode: 0o644},
 		{path: b.CUDA(), mode: 0o755},
 	} {

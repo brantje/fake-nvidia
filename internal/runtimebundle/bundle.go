@@ -30,6 +30,9 @@ func (b Bundle) RealNvidiaSMI() string { return filepath.Join(b.Root, "bin", "nv
 // Control returns the bundled nvml-mock-ctl path.
 func (b Bundle) Control() string { return filepath.Join(b.Root, "bin", "nvml-mock-ctl") }
 
+// FakeLlamaServer returns the Phase 7 manager-compatible test server binary.
+func (b Bundle) FakeLlamaServer() string { return filepath.Join(b.Root, "bin", "fake-llama-server") }
+
 // LibraryDir returns the directory containing NVIDIA-compatible shared libraries.
 func (b Bundle) LibraryDir() string { return filepath.Join(b.Root, "lib") }
 
@@ -48,6 +51,7 @@ func (b Bundle) Validate() error {
 		{path: b.NvidiaSMI(), executable: true},
 		{path: b.RealNvidiaSMI(), executable: true},
 		{path: b.Control(), executable: true},
+		{path: b.FakeLlamaServer(), executable: true},
 		{path: filepath.Join(b.LibraryDir(), "libnvidia-ml.so.1")},
 		{path: b.CUDA()},
 	} {
