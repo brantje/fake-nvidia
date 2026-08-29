@@ -41,7 +41,13 @@ typedef struct {
     size_t totalConstMem;
     int major;
     int minor;
-} prop_prefix;
+    size_t textureAlignment;
+} prop_view;
+
+typedef union {
+    prop_view value;
+    unsigned char storage[2048];
+} prop_buffer;
 
 #define LOAD(handle, name) \
     name##_fn name = (name##_fn)dlsym((handle), #name); \
@@ -171,12 +177,14 @@ int main(int argc, char **argv) {
     require_result(cuDeviceComputeCapability(&major, &minor, dev), CUDA_SUCCESS, "cuDeviceComputeCapability");
     if (major != expected_major || minor != expected_minor) fail("compute capability mismatch");
 
-    prop_prefix prop;
+    prop_buffer prop;
     memset(&prop, 0xaa, sizeof(prop));
-    require_result(cudaGetDeviceProperties(&prop, 0), cudaSuccess, "cudaGetDeviceProperties");
-    if (prop.totalGlobalMem != expected_total || prop.major != expected_major || prop.minor != expected_minor || prop.name[0] == '\0') {
+    require_result(cudaGetDeviceProperties(prop.storage, 0), cudaSuccess, "cudaGetDeviceProperties");
+    if (prop.value.totalGlobalMem != expected_total || prop.value.major != expected_major || prop.value.minor != expected_minor || prop.value.name[0] == '\0') {
         fail("runtime device properties mismatch");
     }
+    if (prop.value.clockRate != 0) fail("unmodeled clockRate must be zero");
+    if (prop.value.textureAlignment != 0) fail("property fields after minor were not initialized");
 
     if (expected_count > 1) {
         require_result(cudaSetDevice(1), cudaSuccess, "cudaSetDevice(1)");
