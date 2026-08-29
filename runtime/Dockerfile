@@ -26,10 +26,20 @@ FROM golang:${UPSTREAM_GO_VERSION}-bookworm@${GOLANG_IMAGE_DIGEST} AS fake_nvidi
 WORKDIR /src
 COPY go.mod ./
 COPY cmd/nvidia-smi-wrapper/ ./cmd/nvidia-smi-wrapper/
+COPY cmd/libcuda/ ./cmd/libcuda/
+COPY internal/control/ ./internal/control/
+COPY internal/cuda/ ./internal/cuda/
 COPY internal/nvmlpmon/ ./internal/nvmlpmon/
 COPY internal/pmon/ ./internal/pmon/
-RUN mkdir -p /out/bin \
-    && CGO_ENABLED=1 go build -trimpath -ldflags='-s -w' -o /out/bin/nvidia-smi ./cmd/nvidia-smi-wrapper
+COPY profiles/ ./profiles/
+RUN mkdir -p /out/bin /out/lib \
+    && CGO_ENABLED=1 go build -trimpath -ldflags='-s -w' -o /out/bin/nvidia-smi ./cmd/nvidia-smi-wrapper \
+    && CGO_ENABLED=1 go build -buildmode=c-shared -trimpath -ldflags='-s -w' -o /out/lib/libcuda.so.1 ./cmd/libcuda \
+    && rm -f /out/lib/*.h \
+    && ln -s libcuda.so.1 /out/lib/libcuda.so \
+    && ln -s libcuda.so.1 /out/lib/libcudart.so.12 \
+    && ln -s libcuda.so.1 /out/lib/libcudart.so.13 \
+    && ln -s libcudart.so.13 /out/lib/libcudart.so
 
 FROM debian:bookworm-20260824-slim@${DEBIAN_IMAGE_DIGEST} AS nvidia_smi
 ARG DEBIAN_SNAPSHOT=20260828T000000Z
