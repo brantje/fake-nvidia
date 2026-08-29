@@ -1,8 +1,11 @@
 # Apply on top of brantje/llamacpp-manager/docker-compose.yml.
 # Do not combine this test override with docker-compose.nvidia.yml: fake-nvidia
 # deliberately requires no NVIDIA Container Toolkit or host GPU device mapping.
+#
+# This override injects NVIDIA discovery/telemetry only. For the complete Phase 8
+# stack, including fake-llama-server, use compose.phase8.yaml instead.
 services:
-  backend:
+  llamacpp-manager:
     environment:
       LD_LIBRARY_PATH: /opt/fake-nvidia/lib
       MOCK_NVML_CONFIG: /var/lib/fake-nvidia/config.yaml
