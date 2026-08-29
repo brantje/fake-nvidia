@@ -1,6 +1,6 @@
 # fake-nvidia runtime bundle
 
-The runtime bundle assembles the NVIDIA-facing userspace surface needed for CPU-only discovery and process-telemetry tests without installing or overwriting host NVIDIA drivers.
+The runtime bundle assembles the NVIDIA-facing userspace surface and companion test binaries needed for CPU-only GPU-aware integration tests without installing or overwriting host NVIDIA drivers.
 
 ## Build
 
@@ -13,10 +13,16 @@ The build runs in Docker and produces a local, ignored `.runtime/` tree:
 ```text
 .runtime/
 ├── bin/
+│   ├── fake-llama-server
 │   ├── nvidia-smi
 │   ├── nvidia-smi.real
 │   └── nvml-mock-ctl
 ├── lib/
+│   ├── libcuda.so
+│   ├── libcuda.so.1
+│   ├── libcudart.so
+│   ├── libcudart.so.12
+│   ├── libcudart.so.13
 │   ├── libnvidia-ml.so
 │   ├── libnvidia-ml.so.1
 │   └── libnvidia-ml.so.<version>
@@ -66,17 +72,29 @@ Runtime changes continue to use upstream `nvml-mock-ctl`. New consumer processes
 
 Process records can be supplied in the generated base configuration or changed at runtime with the existing upstream-backed `SetProcesses` control method. Each record can include PID, name, used VRAM, SM utilization, memory utilization, encoder utilization, and decoder utilization.
 
-Upstream intentionally treats process records and device memory counters as independent configuration fields. Higher-level fake-nvidia scenarios that own process memory should use `SetProcessesReconciled`: it writes the new process list together with `memory.used_bytes` and `memory.free_bytes` in one `nvml-mock-ctl set` transaction. Explicit non-process/system usage is preserved, and removing the process list releases only the process-owned portion.
+Upstream intentionally treats process records and device memory counters as independent configuration fields. Higher-level fake-nvidia scenarios that own process memory use the reconciled process path: it updates the process list together with `memory.used_bytes` and `memory.free_bytes` through the upstream override machinery. Explicit non-process/system usage is preserved, and removing a fake process releases only the process-owned portion.
+
+Phase 7's `fake-llama-server` uses that same reconciliation path. Its actual OS PID and simulated VRAM therefore appear together in `--query-compute-apps`, `pmon`, and device memory usage. It does not maintain a second reservation database.
+
+## Fake llama-server
+
+`fake-llama-server` is a Go companion process for full manager lifecycle tests. It accepts the manager-owned `--model`, `--host`, and `--port` arguments, exposes `GET /health`, implements minimal OpenAI-compatible completion endpoints, and supports deterministic streaming.
+
+It can simulate model-load delay, startup failure, CUDA OOM, a crash after readiness, shutdown hang, and sudden VRAM growth. It does not parse or execute GGUF files and must not be used for performance testing.
+
+See [`../FAKE_LLAMA_SERVER.md`](../FAKE_LLAMA_SERVER.md) for the resource model, GPU selection rules, HTTP contract, failure controls, and LlamaCPP-Manager substitution instructions.
 
 ## Verification
 
+For the full Phase 7 surface:
+
 ```bash
-make phase3
+make phase7
 ```
 
-The native compatibility suite covers both Phase 2 discovery and Phase 3 process telemetry. It verifies single/multiple/mixed GPU discovery; baseline `nvidia-smi`, `-L`, and `-q`; LlamaCPP-Manager's discovery flow; the exact compute-app query; both supported `pmon` forms; multiple processes; one PID on multiple GPUs; runtime process changes; empty process state; non-`pmon` delegation to the real NVIDIA binary; and reconciled process-owned VRAM accounting.
+The CPU-only compatibility suite verifies discovery, process telemetry, the limited CUDA surface, runtime/injection behavior, and the packaged fake llama-server. Phase 7 specifically verifies that the child process's real PID and process-owned VRAM appear through NVIDIA-SMI, health/inference/streaming work, termination cleans shared state, and injected OOM leaves that state unchanged.
 
-`make phase2` remains as a backward-compatible alias for the same native suite.
+Earlier phase targets remain available for their documented compatibility workflows.
 
 ## Safety and phase boundary
 
@@ -84,4 +102,5 @@ The native compatibility suite covers both Phase 2 discovery and Phase 3 process
 - A physical NVIDIA GPU is not required.
 - Generated artifacts stay under `.runtime/` unless an explicit output directory is supplied.
 - The `pmon` dispatcher is intentionally narrow; unsupported or unrelated `pmon` modes are delegated to the real NVIDIA binary rather than silently emulated.
-- This is a local/CI runtime bundle. Transparent Docker/Compose consumer injection is Phase 5 and is deliberately not implemented here.
+- `fake-llama-server` is a test companion and never claims to perform real llama.cpp inference.
+- Runtime/container injection remains scoped to explicitly prepared fake-nvidia test environments.
