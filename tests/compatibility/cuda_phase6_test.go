@@ -35,6 +35,7 @@ func TestPhase6CUDADeviceMemoryAndUnsupportedCompute(t *testing.T) {
 		strconv.FormatUint(cfg.Devices[0].Memory.TotalBytes, 10),
 		strconv.Itoa(cfg.Devices[0].ComputeCapability.Major),
 		strconv.Itoa(cfg.Devices[0].ComputeCapability.Minor),
+		"12080",
 	)
 	if err != nil {
 		t.Fatalf("CUDA basic probe: %v\n%s", err, out)
@@ -66,6 +67,7 @@ func TestPhase6CUDAForcedOOMDoesNotMutateNVML(t *testing.T) {
 		strconv.FormatUint(cfg.Devices[0].Memory.TotalBytes, 10),
 		strconv.Itoa(cfg.Devices[0].ComputeCapability.Major),
 		strconv.Itoa(cfg.Devices[0].ComputeCapability.Minor),
+		"12080",
 	)
 	if err != nil {
 		t.Fatalf("CUDA OOM probe: %v\n%s", err, out)
