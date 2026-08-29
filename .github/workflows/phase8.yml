@@ -19,7 +19,7 @@ concurrency:
 
 env:
   LLAMACPP_MANAGER_REVISION: 0c26e8e19635c5047d06babc7ba3b0173570e6ce
-  LLAMACPP_MANAGER_IMAGE: ghcr.io/brantje/llamacpp-manager:main-0c26e8e
+  LLAMACPP_MANAGER_IMAGE: ghcr.io/brantje/llamacpp-manager@sha256:1cbd6bf1d31893cdcdf6126e1e4239d39f1a903e4837251d0cd528d7a7a70586
 
 jobs:
   e2e:
