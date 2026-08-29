@@ -9,6 +9,7 @@
 #     --runtime-dir "$PWD/.runtime" \
 #     --root "$PWD/.fake-nvidia/llamacpp-manager"
 #
+#   mkdir -p examples/llamacpp-manager/data/{config,models}
 #   export FAKE_NVIDIA_ROOT="$PWD/.fake-nvidia/llamacpp-manager"
 #   export PUID="$(id -u)" PGID="$(id -g)"
 #   docker compose -f examples/llamacpp-manager/docker-compose.yaml up -d
@@ -35,8 +36,8 @@ services:
       MOCK_NVML_CONFIG: /var/lib/fake-nvidia/config.yaml
       MOCK_NVML_OVERRIDES: /var/lib/fake-nvidia/overrides.yaml
     volumes:
-      - ${LCM_CONFIG_DIR:-./data/config}:/config
-      - ${LCM_MODELS_DIR:-./data/models}:/models
+      - ${LCM_CONFIG_HOST_DIR:-./data/config}:/config
+      - ${LCM_MODELS_HOST_DIR:-./data/models}:/models
       - ${FAKE_NVIDIA_ROOT:?run fake-nvidia up and export FAKE_NVIDIA_ROOT}/runtime:/opt/fake-nvidia/runtime:ro
       - ${FAKE_NVIDIA_ROOT:?run fake-nvidia up and export FAKE_NVIDIA_ROOT}/state:/var/lib/fake-nvidia
       - /proc:/host/proc:ro
