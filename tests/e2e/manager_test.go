@@ -28,7 +28,7 @@ import (
 
 const (
 	managerRevision     = "0c26e8e19635c5047d06babc7ba3b0173570e6ce"
-	defaultManagerImage = "ghcr.io/brantje/llamacpp-manager:main-0c26e8e"
+	defaultManagerImage = "ghcr.io/brantje/llamacpp-manager@sha256:1cbd6bf1d31893cdcdf6126e1e4239d39f1a903e4837251d0cd528d7a7a70586"
 	mib                 = int64(1024 * 1024)
 	gib                 = int64(1024 * 1024 * 1024)
 )
@@ -108,9 +108,8 @@ type runtimeResponse struct {
 }
 
 func TestPhase8PublishedManagerRevisionIsPinned(t *testing.T) {
-	image := managerImage()
-	if strings.HasSuffix(image, ":main") || strings.HasSuffix(image, ":latest") {
-		t.Fatalf("Phase 8 must test an immutable manager revision tag, got %q", image)
+	if !strings.Contains(defaultManagerImage, "@sha256:") {
+		t.Fatalf("Phase 8 default manager image must be pinned by digest, got %q", defaultManagerImage)
 	}
 	if managerRevision == "" {
 		t.Fatal("manager revision is not recorded")
@@ -169,7 +168,7 @@ func TestPhase8LifecycleTelemetryAndLiveMutation(t *testing.T) {
 	}
 
 	afterStart := pollHardware(t, h, 10*time.Second, func(snapshot hardwareSnapshot) bool {
-		return len(snapshot.Processes) == 1 && snapshot.Processes[0].PID == started.PID
+		return len(snapshot.GPUs) == 1 && len(snapshot.Processes) == 1 && snapshot.Processes[0].PID == started.PID
 	})
 	process := afterStart.Processes[0]
 	if process.DeviceID != "CUDA0" {
@@ -247,6 +246,9 @@ func TestPhase8ExternalPressureAndEviction(t *testing.T) {
 	t.Run("external-pressure", func(t *testing.T) {
 		h := startManager(t, gpuScenario{profile: "rtx4060ti-16gb", count: 1, vramMiB: 16 * 1024})
 		baseline := h.hardware()
+		if len(baseline.GPUs) != 1 {
+			t.Fatalf("baseline GPUs=%+v", baseline.GPUs)
+		}
 		gpu := baseline.GPUs[0]
 		pressure := int64(8 * gib)
 		if gpu.FreeBytes <= pressure {
@@ -336,6 +338,9 @@ func TestPhase8FailurePathsReleaseSimulatorState(t *testing.T) {
 			extraEnv: map[string]string{"FAKE_LLAMA_CRASH_AFTER_READY": "750ms"},
 		})
 		baseline := h.hardware()
+		if len(baseline.GPUs) != 1 {
+			t.Fatalf("baseline GPUs=%+v", baseline.GPUs)
+		}
 		modelID := h.createSparseModel("crash", 4*gib)
 		instanceID := h.createInstance(modelID, "crash-worker", true)
 		started := h.startInstance(instanceID, http.StatusAccepted)
