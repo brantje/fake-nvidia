@@ -1,6 +1,8 @@
 RUNTIME_DIR ?= $(CURDIR)/.runtime
+K8S_IMAGE ?= fake-nvidia-k8s:local
+KIND_CLUSTER ?= fake-nvidia
 
-.PHONY: runtime compatibility docker-integration phase7-integration phase8-e2e phase2 phase3 phase4 phase5 phase6 phase7 phase8
+.PHONY: runtime compatibility docker-integration phase7-integration phase8-e2e kubernetes-image kubernetes-integration phase2 phase3 phase4 phase5 phase6 phase7 phase8 phase9
 
 runtime:
 	bash scripts/build-runtime.sh "$(RUNTIME_DIR)"
@@ -26,6 +28,15 @@ phase8-e2e: runtime
 	test -x "$(RUNTIME_DIR)/bin/nvml-mock-ctl"
 	test -x "$(RUNTIME_DIR)/bin/fake-llama-server"
 	FAKE_NVIDIA_RUNTIME_DIR="$(RUNTIME_DIR)" go test -tags=e2e -count=1 -v ./tests/e2e
+
+kubernetes-image: runtime
+	docker build -t "$(K8S_IMAGE)" -f kubernetes/Dockerfile .
+
+kubernetes-integration:
+	FAKE_NVIDIA_K8S_IMAGE="$(K8S_IMAGE)" FAKE_NVIDIA_KIND_CLUSTER="$(KIND_CLUSTER)" go test -tags=kubernetes_integration -count=1 -v ./tests/kubernetes
+
+phase9: compatibility docker-integration
+	go build ./cmd/fake-nvidia ./cmd/fake-llama-server ./cmd/fake-nvidia-k8s-installer
 
 phase8: compatibility docker-integration phase8-e2e
 	go build ./cmd/fake-nvidia ./cmd/fake-llama-server

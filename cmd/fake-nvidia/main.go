@@ -68,6 +68,8 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return runUp(catalog, args[1:], stdout, stderr)
 	case "down":
 		return runDown(args[1:], stdout, stderr)
+	case "kubernetes":
+		return runKubernetes(catalog, args[1:], stdout, stderr)
 	case "ctl":
 		return controlcli.Run(context.Background(), args[1:], os.Stdin, stdout, stderr)
 	case "help", "-h", "--help":
@@ -205,12 +207,15 @@ usage:
   fake-nvidia up --profile <id> [--gpus N] [--vram-mib MiB]
   fake-nvidia up --topology <id>
   fake-nvidia down [--root .fake-nvidia]
+  fake-nvidia kubernetes --profile <id> [--gpus N] [--vram-mib MiB] [--image <ref>]
+  fake-nvidia kubernetes --topology <id> [--image <ref>]
   fake-nvidia ctl <control command> [args...]
 
 render writes upstream Mock NVML YAML. up prepares an isolated runtime/state root for
-Docker/Compose injection, and down removes only fake-nvidia-owned injection roots.
-ctl composes the upstream nvml-mock-ctl override mechanism and is also available
-as the standalone fake-nvidia-ctl binary.
+Docker/Compose injection, kubernetes renders the Phase 9 ConfigMap/node-installer
+DaemonSet from the same profiles, and down removes only fake-nvidia-owned injection
+roots. ctl composes the upstream nvml-mock-ctl override mechanism and is also
+available as the standalone fake-nvidia-ctl binary.
 `)
 	return err
 }
