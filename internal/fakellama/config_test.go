@@ -40,8 +40,8 @@ func TestParseConfigAcceptsManagerArgsAndIgnoresUnrelatedFlags(t *testing.T) {
 // deterministic even when the surrounding runtime exports defaults.
 func TestParseConfigFakeFlagsOverrideEnvironment(t *testing.T) {
 	env := map[string]string{
-		"FAKE_LLAMA_GPUS":        "3",
-		"FAKE_LLAMA_VRAM":        "1GiB",
+		"FAKE_LLAMA_GPUS":         "3",
+		"FAKE_LLAMA_VRAM":         "1GiB",
 		"FAKE_LLAMA_STARTUP_FAIL": "false",
 	}
 	cfg, err := ParseConfig([]string{
@@ -97,5 +97,13 @@ func TestParseBytes(t *testing.T) {
 		if got != want {
 			t.Fatalf("ParseBytes(%q)=%d want=%d", raw, got, want)
 		}
+	}
+}
+
+// TestParseBytesRejectsUint64Overflow verifies an exact 2^64 request is
+// rejected before the float-to-uint64 conversion can become implementation-dependent.
+func TestParseBytesRejectsUint64Overflow(t *testing.T) {
+	if _, err := ParseBytes("18446744073709551616"); err == nil {
+		t.Fatal("expected uint64 overflow error")
 	}
 }
