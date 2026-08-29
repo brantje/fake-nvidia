@@ -13,6 +13,7 @@ import (
 	"github.com/brantje/fake-nvidia/profiles"
 )
 
+// runUp prepares an isolated runtime injection root for a profile or topology.
 func runUp(catalog *profiles.Catalog, args []string, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("up", flag.ContinueOnError)
 	fs.SetOutput(stderr)
@@ -71,6 +72,7 @@ func runUp(catalog *profiles.Catalog, args []string, stdout, stderr io.Writer) e
 	return err
 }
 
+// runDown safely removes a previously prepared fake-nvidia injection root.
 func runDown(args []string, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("down", flag.ContinueOnError)
 	fs.SetOutput(stderr)
@@ -88,6 +90,7 @@ func runDown(args []string, stdout, stderr io.Writer) error {
 	return err
 }
 
+// defaultRuntimeDir returns the configured runtime bundle path or the local default.
 func defaultRuntimeDir() string {
 	if value := strings.TrimSpace(os.Getenv("FAKE_NVIDIA_RUNTIME_DIR")); value != "" {
 		return value
