@@ -8,6 +8,8 @@ import (
 	"syscall"
 )
 
+const defaultOverrideFile = "/var/lib/nvml-mock/driver/config/overrides.yaml"
+
 // Manager composes effective-state reads with upstream-backed mutations.
 type Manager struct {
 	Client   *Client
@@ -21,7 +23,20 @@ type Manager struct {
 
 // NewManager constructs a high-level control manager.
 func NewManager(client *Client, observer *Observer) *Manager {
-	return &Manager{Client: client, Observer: observer}
+	m := &Manager{Client: client, Observer: observer}
+	if client == nil {
+		return m
+	}
+	path := client.OverrideFile
+	if path == "" {
+		if _, ok := client.Runner.(ExecRunner); ok {
+			path = defaultOverrideFile
+		}
+	}
+	if path != "" {
+		m.MutationLockPath = path + ".fake-nvidia-memory.lock"
+	}
+	return m
 }
 
 // SetGPUUtilization pins only GPU utilization while preserving the configured
