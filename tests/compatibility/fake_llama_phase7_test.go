@@ -5,6 +5,7 @@ package compatibility
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
