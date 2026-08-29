@@ -81,36 +81,53 @@ func (RealClock) Wait(ctx context.Context, d time.Duration) error {
 	}
 }
 
+type lineEventResult struct {
+	line string
+	err  error
+}
+
 // LineEvents reads newline-delimited event names, useful for deterministic CI
 // orchestration without introducing a control server.
 type LineEvents struct {
-	scanner *bufio.Scanner
+	results <-chan lineEventResult
 }
 
-// NewLineEvents constructs an event source over r.
+// NewLineEvents constructs an event source over r. Scanning happens away from
+// Wait so a blocked stdin read cannot prevent context cancellation.
 func NewLineEvents(r io.Reader) *LineEvents {
-	return &LineEvents{scanner: bufio.NewScanner(r)}
+	results := make(chan lineEventResult, 1)
+	go func() {
+		defer close(results)
+		scanner := bufio.NewScanner(r)
+		for scanner.Scan() {
+			results <- lineEventResult{line: scanner.Text()}
+		}
+		if err := scanner.Err(); err != nil {
+			results <- lineEventResult{err: err}
+		}
+	}()
+	return &LineEvents{results: results}
 }
 
 // Wait consumes events until the requested name is observed.
 func (l *LineEvents) Wait(ctx context.Context, name string) error {
-	if l == nil || l.scanner == nil {
+	if l == nil || l.results == nil {
 		return errors.New("event source is required")
 	}
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		default:
-		}
-		if !l.scanner.Scan() {
-			if err := l.scanner.Err(); err != nil {
-				return err
+		case result, ok := <-l.results:
+			if !ok {
+				return fmt.Errorf("event %q not received before input closed", name)
 			}
-			return fmt.Errorf("event %q not received before input closed", name)
-		}
-		if strings.TrimSpace(l.scanner.Text()) == name {
-			return nil
+			if result.err != nil {
+				return result.err
+			}
+			if strings.TrimSpace(result.line) == name {
+				return nil
+			}
 		}
 	}
 }
