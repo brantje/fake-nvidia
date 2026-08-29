@@ -89,7 +89,12 @@ jobs:
         run: FAKE_NVIDIA_RUNTIME_DIR="$PWD/.runtime" go test -tags=integration -run '^TestPhase7' -v ./tests/compatibility
 
       - name: Full nvidia-smi and native compatibility suite
-        run: make compatibility
+        run: |
+          test -x .runtime/bin/nvidia-smi
+          test -x .runtime/bin/fake-llama-server
+          test -f .runtime/lib/libcuda.so.1
+          test -f .runtime/lib/libcudart.so
+          FAKE_NVIDIA_RUNTIME_DIR="$PWD/.runtime" go test -tags=integration -v ./tests/compatibility
 
       - name: CPU-only Docker image and injection suite
-        run: make docker-integration
+        run: FAKE_NVIDIA_RUNTIME_DIR="$PWD/.runtime" go test -tags=docker_integration -v ./tests/docker
