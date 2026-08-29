@@ -4,15 +4,47 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
+	"strconv"
+	"strings"
 	"syscall"
+	"time"
 
 	"github.com/brantje/fake-nvidia/internal/fakellama"
 )
 
+const fakeLlamaServerVersion = "fake-llama-server 0.1.0 (fake-nvidia)"
+
+const fakeLlamaServerHelp = `usage: fake-llama-server [options]
+
+  -m, --model PATH            model path
+      --host HOST             bind host
+      --port N                bind port
+  -c, --ctx-size N            context size
+      --device DEVICES        comma-separated llama.cpp devices, for example CUDA0,CUDA1
+      --main-gpu N            main GPU index
+      --tensor-split SPLIT    comma-separated tensor split weights
+      --fake-gpus DEVICES     fake-nvidia-only explicit device indices
+      --fake-vram SIZE        fake-nvidia-only explicit VRAM reservation
+      --fake-startup-fail     inject startup failure
+      --fake-cuda-oom         inject CUDA out-of-memory failure
+      --fake-crash-after-ready DURATION
+                              crash after reaching ready state
+      --fake-hang-shutdown    release GPU state but keep the process alive on shutdown
+`
+
 func main() {
-	cfg, err := fakellama.ParseConfig(os.Args[1:], os.Getenv)
+	if handleInfoRequest(os.Args[1:], os.Stdout) {
+		return
+	}
+	args, err := withManagerDeviceTargets(os.Args[1:], os.Getenv)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "fake-llama-server:", err)
+		os.Exit(2)
+	}
+	cfg, err := fakellama.ParseConfig(args, os.Getenv)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "fake-llama-server:", err)
 		os.Exit(2)
@@ -42,6 +74,18 @@ func main() {
 		}
 	}()
 
+	// Phase 8 can hold the worker after the manager has planned and launched it
+	// but before the fake process reserves GPU resources. Releasing the gate after
+	// a live NVML mutation gives a deterministic plan-vs-launch race without
+	// sleeping for an assumed amount of scheduler time.
+	if err := waitForRegisterGate(ctx, os.Getenv("FAKE_LLAMA_REGISTER_GATE")); err != nil {
+		if errors.Is(err, context.Canceled) {
+			return
+		}
+		fmt.Fprintln(os.Stderr, "fake-llama-server:", err)
+		os.Exit(1)
+	}
+
 	if err := server.Run(ctx); err != nil {
 		fmt.Fprintln(os.Stderr, "fake-llama-server:", err)
 		if errors.Is(err, fakellama.ErrInjectedCrash) {
@@ -49,4 +93,128 @@ func main() {
 		}
 		os.Exit(1)
 	}
+}
+
+// handleInfoRequest implements the side-effect-free llama-server probes used by
+// LlamaCPP-Manager during startup discovery. These paths intentionally do not
+// require a model or initialize the fake NVIDIA runtime.
+func handleInfoRequest(args []string, out io.Writer) bool {
+	for _, arg := range args {
+		switch strings.TrimSpace(arg) {
+		case "--version", "-version":
+			fmt.Fprintln(out, fakeLlamaServerVersion)
+			return true
+		case "--help", "-h", "-help":
+			fmt.Fprint(out, fakeLlamaServerHelp)
+			return true
+		}
+	}
+	return false
+}
+
+// waitForRegisterGate waits for a test-owned gate file before allowing the fake
+// worker to enter Server.Run, which is where it opens its listener and registers
+// fake GPU process/VRAM state. Empty paths disable the gate.
+func waitForRegisterGate(ctx context.Context, path string) error {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return nil
+	}
+	ticker := time.NewTicker(25 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		if _, err := os.Stat(path); err == nil {
+			return nil
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("inspect fake register gate %q: %w", path, err)
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+		}
+	}
+}
+
+// withManagerDeviceTargets translates the manager-owned llama.cpp --device
+// selection into fake-nvidia device indices. Explicit fake targets remain the
+// highest-priority test control and are never overwritten by this translation.
+func withManagerDeviceTargets(args []string, getenv func(string) string) ([]string, error) {
+	if getenv == nil {
+		getenv = os.Getenv
+	}
+	if strings.TrimSpace(getenv("FAKE_LLAMA_GPUS")) != "" || hasFakeGPUOverride(args) {
+		return append([]string(nil), args...), nil
+	}
+
+	deviceValue := ""
+	found := false
+	for i := 0; i < len(args); i++ {
+		arg := strings.TrimSpace(args[i])
+		if strings.HasPrefix(arg, "--device=") {
+			deviceValue = strings.TrimSpace(strings.TrimPrefix(arg, "--device="))
+			found = true
+			continue
+		}
+		if arg != "--device" {
+			continue
+		}
+		if i+1 >= len(args) {
+			return nil, errors.New("--device requires a value")
+		}
+		deviceValue = strings.TrimSpace(args[i+1])
+		found = true
+		i++
+	}
+	if !found {
+		return append([]string(nil), args...), nil
+	}
+
+	targets, err := normalizeManagerDevices(deviceValue)
+	if err != nil {
+		return nil, err
+	}
+	out := append([]string(nil), args...)
+	out = append(out, "--fake-gpus="+strings.Join(targets, ","))
+	return out, nil
+}
+
+func hasFakeGPUOverride(args []string) bool {
+	for _, arg := range args {
+		arg = strings.TrimSpace(arg)
+		if arg == "--fake-gpus" || strings.HasPrefix(arg, "--fake-gpus=") {
+			return true
+		}
+	}
+	return false
+}
+
+func normalizeManagerDevices(raw string) ([]string, error) {
+	parts := strings.Split(raw, ",")
+	targets := make([]string, 0, len(parts))
+	seen := map[string]bool{}
+	for _, part := range parts {
+		device := strings.TrimSpace(part)
+		if device == "" {
+			return nil, fmt.Errorf("invalid --device value %q", raw)
+		}
+		upper := strings.ToUpper(device)
+		indexText := device
+		if strings.HasPrefix(upper, "CUDA") {
+			indexText = device[len("CUDA"):]
+		}
+		index, err := strconv.Atoi(indexText)
+		if err != nil || index < 0 {
+			return nil, fmt.Errorf("unsupported fake NVIDIA device %q in --device %q", device, raw)
+		}
+		target := strconv.Itoa(index)
+		if !seen[target] {
+			targets = append(targets, target)
+			seen[target] = true
+		}
+	}
+	if len(targets) == 0 {
+		return nil, fmt.Errorf("invalid --device value %q", raw)
+	}
+	return targets, nil
 }

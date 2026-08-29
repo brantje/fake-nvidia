@@ -1,3 +1,4 @@
 .runtime/
 .fake-nvidia/
+examples/llamacpp-manager/data/
 coverage.out

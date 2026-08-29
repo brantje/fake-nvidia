@@ -1,6 +1,6 @@
 RUNTIME_DIR ?= $(CURDIR)/.runtime
 
-.PHONY: runtime compatibility docker-integration phase7-integration phase2 phase3 phase4 phase5 phase6 phase7
+.PHONY: runtime compatibility docker-integration phase7-integration phase8-e2e phase2 phase3 phase4 phase5 phase6 phase7 phase8
 
 runtime:
 	bash scripts/build-runtime.sh "$(RUNTIME_DIR)"
@@ -20,6 +20,15 @@ phase7-integration: runtime
 docker-integration: runtime
 	test -x "$(RUNTIME_DIR)/bin/nvidia-smi"
 	FAKE_NVIDIA_RUNTIME_DIR="$(RUNTIME_DIR)" go test -tags=docker_integration -v ./tests/docker
+
+phase8-e2e: runtime
+	test -x "$(RUNTIME_DIR)/bin/nvidia-smi"
+	test -x "$(RUNTIME_DIR)/bin/nvml-mock-ctl"
+	test -x "$(RUNTIME_DIR)/bin/fake-llama-server"
+	FAKE_NVIDIA_RUNTIME_DIR="$(RUNTIME_DIR)" go test -tags=e2e -count=1 -v ./tests/e2e
+
+phase8: compatibility docker-integration phase8-e2e
+	go build ./cmd/fake-nvidia ./cmd/fake-llama-server
 
 phase7: compatibility docker-integration
 	go build ./cmd/fake-nvidia ./cmd/fake-llama-server
