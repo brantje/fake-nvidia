@@ -39,12 +39,12 @@ var (
 )
 
 type gpuScenario struct {
-	profile   string
-	count     int
-	vramMiB   uint64
-	topology  string
-	noGPU     bool
-	extraEnv  map[string]string
+	profile  string
+	count    int
+	vramMiB  uint64
+	topology string
+	noGPU    bool
+	extraEnv map[string]string
 }
 
 type managerHarness struct {
@@ -390,6 +390,7 @@ func startManager(t *testing.T, scenario gpuScenario) *managerHarness {
 		"-e", "LCM_LISTEN_ADDR=:8000",
 		"-e", "LCM_DATA_DIR=/config",
 		"-e", "LCM_MODELS_DIR=/models",
+		"-e", "LCM_STARTUP_TIMEOUT_SECONDS=5",
 		"-v", configDir + ":/config",
 		"-v", modelsDir + ":/models",
 	}
