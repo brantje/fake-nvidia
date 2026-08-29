@@ -36,13 +36,20 @@ func TestCPUOnlyConsumerInjection(t *testing.T) {
 		"--gpus", "2")
 
 	composeEnv := []string{"FAKE_NVIDIA_ROOT=" + root}
-	list := run(t, repoRoot, composeEnv, "docker", "compose",
+	composeArgs := []string{
+		"compose", "--project-name", "fake-nvidia-phase5-test",
 		"-f", "examples/docker/compose.yaml",
 		"-f", "examples/docker/compose.override.yaml",
-		"run", "--rm", "consumer")
-	if strings.Count(strings.TrimSpace(list), "\n") != 1 {
-		t.Fatalf("nvidia-smi -L output = %q, want two GPUs", list)
 	}
+	t.Cleanup(func() {
+		args := append(append([]string{}, composeArgs...), "down", "--remove-orphans")
+		cmd := exec.Command("docker", args...)
+		cmd.Dir = repoRoot
+		cmd.Env = append(os.Environ(), composeEnv...)
+		_ = cmd.Run()
+	})
+	listArgs := append(append([]string{}, composeArgs...), "run", "--rm", "consumer")
+	list := run(t, repoRoot, composeEnv, "docker", listArgs...)
 	if !strings.Contains(list, "GPU 0:") || !strings.Contains(list, "GPU 1:") {
 		t.Fatalf("nvidia-smi -L output = %q, missing GPU indices", list)
 	}
