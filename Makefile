@@ -12,7 +12,7 @@ compatibility: runtime
 	test -f "$(RUNTIME_DIR)/lib/libcudart.so"
 	FAKE_NVIDIA_RUNTIME_DIR="$(RUNTIME_DIR)" go test -tags=integration -v ./tests/compatibility
 
-phase7-integration:
+phase7-integration: runtime
 	test -x "$(RUNTIME_DIR)/bin/nvidia-smi"
 	test -x "$(RUNTIME_DIR)/bin/fake-llama-server"
 	FAKE_NVIDIA_RUNTIME_DIR="$(RUNTIME_DIR)" go test -tags=integration -run '^TestPhase7' -v ./tests/compatibility
