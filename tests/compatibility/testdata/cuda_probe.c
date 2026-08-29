@@ -24,6 +24,8 @@ typedef int cudaError_t;
 typedef struct { unsigned int x, y, z; } dim3;
 typedef void *cudaStream_t;
 typedef struct { unsigned char bytes[16]; } cudaUUID_t;
+
+/* CUDA 12.8 cudaDeviceProp layout mirrored without requiring CUDA headers. */
 typedef struct {
     char name[256];
     cudaUUID_t uuid;
@@ -42,12 +44,83 @@ typedef struct {
     int major;
     int minor;
     size_t textureAlignment;
+    size_t texturePitchAlignment;
+    int deviceOverlap;
+    int multiProcessorCount;
+    int kernelExecTimeoutEnabled;
+    int integrated;
+    int canMapHostMemory;
+    int computeMode;
+    int maxTexture1D;
+    int maxTexture1DMipmap;
+    int maxTexture1DLinear;
+    int maxTexture2D[2];
+    int maxTexture2DMipmap[2];
+    int maxTexture2DLinear[3];
+    int maxTexture2DGather[2];
+    int maxTexture3D[3];
+    int maxTexture3DAlt[3];
+    int maxTextureCubemap;
+    int maxTexture1DLayered[2];
+    int maxTexture2DLayered[3];
+    int maxTextureCubemapLayered[2];
+    int maxSurface1D;
+    int maxSurface2D[2];
+    int maxSurface3D[3];
+    int maxSurface1DLayered[2];
+    int maxSurface2DLayered[3];
+    int maxSurfaceCubemap;
+    int maxSurfaceCubemapLayered[2];
+    size_t surfaceAlignment;
+    int concurrentKernels;
+    int ECCEnabled;
+    int pciBusID;
+    int pciDeviceID;
+    int pciDomainID;
+    int tccDriver;
+    int asyncEngineCount;
+    int unifiedAddressing;
+    int memoryClockRate;
+    int memoryBusWidth;
+    int l2CacheSize;
+    int persistingL2CacheMaxSize;
+    int maxThreadsPerMultiProcessor;
+    int streamPrioritiesSupported;
+    int globalL1CacheSupported;
+    int localL1CacheSupported;
+    size_t sharedMemPerMultiprocessor;
+    int regsPerMultiprocessor;
+    int managedMemory;
+    int isMultiGpuBoard;
+    int multiGpuBoardGroupID;
+    int hostNativeAtomicSupported;
+    int singleToDoublePrecisionPerfRatio;
+    int pageableMemoryAccess;
+    int concurrentManagedAccess;
+    int computePreemptionSupported;
+    int canUseHostPointerForRegisteredMem;
+    int cooperativeLaunch;
+    int cooperativeMultiDeviceLaunch;
+    size_t sharedMemPerBlockOptin;
+    int pageableMemoryAccessUsesHostPageTables;
+    int directManagedMemAccessFromHost;
+    int maxBlocksPerMultiProcessor;
+    int accessPolicyMaxWindowSize;
+    size_t reservedSharedMemPerBlock;
+    int hostRegisterSupported;
+    int sparseCudaArraySupported;
+    int hostRegisterReadOnlySupported;
+    int timelineSemaphoreInteropSupported;
+    int memoryPoolsSupported;
+    int gpuDirectRDMASupported;
+    unsigned int gpuDirectRDMAFlushWritesOptions;
+    int gpuDirectRDMAWritesOrdering;
+    unsigned int memoryPoolSupportedHandleTypes;
+    int deferredMappingCudaArraySupported;
+    int ipcEventSupported;
+    int unifiedFunctionPointers;
+    int reserved[56];
 } prop_view;
-
-typedef union {
-    prop_view value;
-    unsigned char storage[2048];
-} prop_buffer;
 
 #define LOAD(handle, name) \
     name##_fn name = (name##_fn)dlsym((handle), #name); \
@@ -106,11 +179,12 @@ typedef cudaError_t (*cudaLaunchKernel_fn)(const void *, dim3, dim3, void **, si
 typedef const char *(*cudaGetErrorString_fn)(cudaError_t);
 
 int main(int argc, char **argv) {
-    if (argc != 6) fail("usage: cuda_probe <basic|oom> <count> <total0> <major0> <minor0>");
+    if (argc != 7) fail("usage: cuda_probe <basic|oom> <count> <total0> <major0> <minor0> <driver-version>");
     int expected_count = atoi(argv[2]);
     size_t expected_total = (size_t)strtoull(argv[3], NULL, 10);
     int expected_major = atoi(argv[4]);
     int expected_minor = atoi(argv[5]);
+    int expected_driver_version = atoi(argv[6]);
 
     void *driver = dlopen("libcuda.so.1", RTLD_NOW | RTLD_LOCAL);
     if (driver == NULL) fail(dlerror());
@@ -147,7 +221,10 @@ int main(int argc, char **argv) {
     require_result(cuInit(0), CUDA_SUCCESS, "cuInit");
     int driver_version = 0;
     require_result(cuDriverGetVersion(&driver_version), CUDA_SUCCESS, "cuDriverGetVersion");
-    if (driver_version != 12080) fail("driver version does not follow configured CUDA version");
+    if (driver_version != expected_driver_version) {
+        fprintf(stderr, "cuda probe: driver version=%d want=%d\n", driver_version, expected_driver_version);
+        exit(2);
+    }
 
     int count = -1;
     require_result(cuDeviceGetCount(&count), CUDA_SUCCESS, "cuDeviceGetCount");
@@ -177,14 +254,15 @@ int main(int argc, char **argv) {
     require_result(cuDeviceComputeCapability(&major, &minor, dev), CUDA_SUCCESS, "cuDeviceComputeCapability");
     if (major != expected_major || minor != expected_minor) fail("compute capability mismatch");
 
-    prop_buffer prop;
+    prop_view prop;
     memset(&prop, 0xaa, sizeof(prop));
-    require_result(cudaGetDeviceProperties(prop.storage, 0), cudaSuccess, "cudaGetDeviceProperties");
-    if (prop.value.totalGlobalMem != expected_total || prop.value.major != expected_major || prop.value.minor != expected_minor || prop.value.name[0] == '\0') {
+    require_result(cudaGetDeviceProperties(&prop, 0), cudaSuccess, "cudaGetDeviceProperties");
+    if (prop.totalGlobalMem != expected_total || prop.major != expected_major || prop.minor != expected_minor || prop.name[0] == '\0') {
         fail("runtime device properties mismatch");
     }
-    if (prop.value.clockRate != 0) fail("unmodeled clockRate must be zero");
-    if (prop.value.textureAlignment != 0) fail("property fields after minor were not initialized");
+    if (prop.clockRate != 0) fail("unmodeled clockRate must be zero");
+    if (prop.unifiedFunctionPointers != 0) fail("unmodeled trailing capability was not initialized");
+    if (prop.reserved[55] != 0) fail("trailing cudaDeviceProp reserved field was not initialized");
 
     if (expected_count > 1) {
         require_result(cudaSetDevice(1), cudaSuccess, "cudaSetDevice(1)");
@@ -242,10 +320,10 @@ int main(int argc, char **argv) {
     require_result(cudaMemcpy(dst, src, sizeof(src), 1), cudaErrorNotSupported, "cudaMemcpy host-to-device");
 
     void *resolved = NULL;
-    require_result(cuGetProcAddress("cuMemAlloc_v2", &resolved, 12080, 0), CUDA_SUCCESS, "cuGetProcAddress supported");
+    require_result(cuGetProcAddress("cuMemAlloc_v2", &resolved, expected_driver_version, 0), CUDA_SUCCESS, "cuGetProcAddress supported");
     if (resolved == NULL) fail("cuGetProcAddress returned NULL for supported symbol");
     resolved = (void *)1;
-    require_result(cuGetProcAddress("cuDefinitelyUnsupported", &resolved, 12080, 0), CUDA_ERROR_NOT_FOUND, "cuGetProcAddress unsupported");
+    require_result(cuGetProcAddress("cuDefinitelyUnsupported", &resolved, expected_driver_version, 0), CUDA_ERROR_NOT_FOUND, "cuGetProcAddress unsupported");
     if (resolved != NULL) fail("cuGetProcAddress retained pointer for unsupported symbol");
 
     require_result(cuLaunchKernel(NULL, 1, 1, 1, 1, 1, 1, 0, NULL, NULL, NULL), CUDA_ERROR_NOT_SUPPORTED, "cuLaunchKernel");
