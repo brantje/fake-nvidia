@@ -68,6 +68,7 @@ The Compose file supports these environment variables:
 - `LCM_PORT` — host port, default `8080`.
 - `LCM_CONFIG_HOST_DIR` — host directory mounted at `/config`.
 - `LCM_MODELS_HOST_DIR` — host directory mounted at `/models`.
+- `LCM_ALWAYS_ON_RECONCILE_SECONDS` — periodic Always-On instance reconciliation interval in seconds, default `15`. Set it to `0` to disable periodic reconciliation after the initial startup reconciliation.
 - `PUID` / `PGID` — container user IDs, default `1000:1000`.
 - `LLAMACPP_MANAGER_IMAGE` — manager image override. The default is the immutable image validated by Phase 8.
 
