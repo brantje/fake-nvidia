@@ -7,6 +7,7 @@ import (
 	"testing"
 )
 
+// TestPrepareAndDownPreserveRuntimeAndSymlinks verifies isolation and symlink fidelity.
 func TestPrepareAndDownPreserveRuntimeAndSymlinks(t *testing.T) {
 	t.Parallel()
 	base := t.TempDir()
@@ -52,6 +53,7 @@ func TestPrepareAndDownPreserveRuntimeAndSymlinks(t *testing.T) {
 	}
 }
 
+// TestPrepareReplacesOnlyOwnedRoot verifies unmarked paths are never replaced or removed.
 func TestPrepareReplacesOnlyOwnedRoot(t *testing.T) {
 	t.Parallel()
 	base := t.TempDir()
@@ -77,6 +79,7 @@ func TestPrepareReplacesOnlyOwnedRoot(t *testing.T) {
 	}
 }
 
+// TestPrepareRejectsOverlappingRoots verifies source and destination cannot overlap.
 func TestPrepareRejectsOverlappingRoots(t *testing.T) {
 	t.Parallel()
 	base := t.TempDir()
@@ -94,6 +97,7 @@ func TestPrepareRejectsOverlappingRoots(t *testing.T) {
 	}
 }
 
+// TestPrepareCanRefreshOwnedRoot verifies config refresh preserves Phase 4 overrides.
 func TestPrepareCanRefreshOwnedRoot(t *testing.T) {
 	t.Parallel()
 	base := t.TempDir()
@@ -101,9 +105,15 @@ func TestPrepareCanRefreshOwnedRoot(t *testing.T) {
 	writeTestBundle(t, runtimeRoot)
 	root := filepath.Join(base, "injection")
 
-	if _, err := Prepare(root, runtimeRoot, []byte("generation: one\n")); err != nil {
+	first, err := Prepare(root, runtimeRoot, []byte("generation: one\n"))
+	if err != nil {
 		t.Fatal(err)
 	}
+	const overrides = "Device:\n  GPU-00000000-0000-0000-0000-000000000000:\n    UtilizationRates:\n      Gpu: 77\n"
+	if err := os.WriteFile(first.OverridesPath, []byte(overrides), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
 	layout, err := Prepare(root, runtimeRoot, []byte("generation: two\n"))
 	if err != nil {
 		t.Fatal(err)
@@ -115,8 +125,51 @@ func TestPrepareCanRefreshOwnedRoot(t *testing.T) {
 	if string(data) != "generation: two\n" {
 		t.Fatalf("config = %q", data)
 	}
+	preserved, err := os.ReadFile(layout.OverridesPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(preserved) != overrides {
+		t.Fatalf("overrides = %q, want %q", preserved, overrides)
+	}
+	info, err := os.Stat(layout.OverridesPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Fatalf("override permissions = %o, want 600", info.Mode().Perm())
+	}
 }
 
+// TestPrepareRejectsNonRegularExistingOverrides prevents refresh from following state symlinks.
+func TestPrepareRejectsNonRegularExistingOverrides(t *testing.T) {
+	t.Parallel()
+	base := t.TempDir()
+	runtimeRoot := filepath.Join(base, "runtime-source")
+	writeTestBundle(t, runtimeRoot)
+	root := filepath.Join(base, "injection")
+
+	first, err := Prepare(root, runtimeRoot, []byte("generation: one\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	outside := filepath.Join(base, "outside-overrides.yaml")
+	if err := os.WriteFile(outside, []byte("outside\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, first.OverridesPath); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Prepare(root, runtimeRoot, []byte("generation: two\n")); err == nil || !strings.Contains(err.Error(), "not a regular file") {
+		t.Fatalf("Prepare() error = %v, want non-regular override refusal", err)
+	}
+	data, err := os.ReadFile(outside)
+	if err != nil || string(data) != "outside\n" {
+		t.Fatalf("outside override changed: %q, %v", data, err)
+	}
+}
+
+// writeTestBundle creates the minimum runtime bundle required by validation.
 func writeTestBundle(t *testing.T, root string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Join(root, "bin"), 0o755); err != nil {
