@@ -1,0 +1,61 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: fake-nvidia-consumer
+  labels:
+    app.kubernetes.io/part-of: fake-nvidia-phase9
+spec:
+  restartPolicy: Never
+  tolerations:
+    - operator: Exists
+  containers:
+    - name: consumer
+      image: debian:bookworm-20260824-slim
+      imagePullPolicy: IfNotPresent
+      command:
+        - /bin/sh
+        - -ec
+        - |
+          test -c /dev/nvidia0
+          test -c /dev/nvidia1
+          test -e /opt/fake-nvidia/lib/libnvidia-ml.so.1
+          nvidia-smi -L
+          nvidia-smi --query-gpu=index,uuid,name,memory.total,memory.used,utilization.gpu --format=csv,noheader,nounits
+          sleep 600
+      env:
+        - name: PATH
+          value: /opt/fake-nvidia/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+        - name: LD_LIBRARY_PATH
+          value: /opt/fake-nvidia/lib
+        - name: MOCK_NVML_CONFIG
+          value: /opt/fake-nvidia/state/config.yaml
+        - name: MOCK_NVML_OVERRIDES
+          value: /opt/fake-nvidia/state/overrides.yaml
+      resources:
+        limits:
+          nvidia.com/gpu: 2
+        requests:
+          nvidia.com/gpu: 2
+      volumeMounts:
+        - name: runtime-bin
+          mountPath: /opt/fake-nvidia/bin
+          readOnly: true
+        - name: runtime-lib
+          mountPath: /opt/fake-nvidia/lib
+          readOnly: true
+        - name: state
+          mountPath: /opt/fake-nvidia/state
+          readOnly: true
+  volumes:
+    - name: runtime-bin
+      hostPath:
+        path: /var/lib/fake-nvidia/runtime/bin
+        type: Directory
+    - name: runtime-lib
+      hostPath:
+        path: /var/lib/fake-nvidia/runtime/lib
+        type: Directory
+    - name: state
+      hostPath:
+        path: /var/lib/fake-nvidia/state
+        type: Directory
