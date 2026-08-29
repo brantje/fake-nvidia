@@ -316,13 +316,14 @@ func ParseBytes(raw string) (uint64, error) {
 	if err != nil || value < 0 || math.IsInf(value, 0) || math.IsNaN(value) {
 		return 0, fmt.Errorf("invalid size %q", raw)
 	}
-	bytes := value * mult
-	if bytes > float64(^uint64(0)) {
+	bytes := math.Round(value * mult)
+	if bytes >= float64(^uint64(0)) {
 		return 0, fmt.Errorf("size %q overflows uint64", raw)
 	}
-	return uint64(math.Round(bytes)), nil
+	return uint64(bytes), nil
 }
 
+// durationValue reads and parses a non-negative duration from one CLI value.
 func durationValue(read func() (string, error)) (time.Duration, error) {
 	raw, err := read()
 	if err != nil {
@@ -335,6 +336,7 @@ func durationValue(read func() (string, error)) (time.Duration, error) {
 	return value, nil
 }
 
+// parsePort validates a TCP port, allowing zero for test-selected ephemeral ports.
 func parsePort(raw string) (int, error) {
 	port, err := strconv.Atoi(strings.TrimSpace(raw))
 	if err != nil || port < 0 || port > 65535 {
@@ -343,6 +345,7 @@ func parsePort(raw string) (int, error) {
 	return port, nil
 }
 
+// parseTensorSplit parses non-negative llama.cpp tensor split weights.
 func parseTensorSplit(raw string) ([]float64, error) {
 	parts := strings.FieldsFunc(raw, func(r rune) bool { return r == ',' || r == ';' || r == ' ' || r == '\t' })
 	if len(parts) == 0 {
@@ -359,6 +362,7 @@ func parseTensorSplit(raw string) ([]float64, error) {
 	return weights, nil
 }
 
+// parsePercent parses deterministic synthetic utilization in the range 0..100.
 func parsePercent(raw string) (uint32, error) {
 	value, err := strconv.ParseUint(strings.TrimSpace(raw), 10, 32)
 	if err != nil || value > 100 {
@@ -367,6 +371,7 @@ func parsePercent(raw string) (uint32, error) {
 	return uint32(value), nil
 }
 
+// splitList parses comma-, semicolon-, or whitespace-separated GPU target lists.
 func splitList(raw string) []string {
 	parts := strings.FieldsFunc(raw, func(r rune) bool { return r == ',' || r == ';' || r == ' ' || r == '\t' })
 	out := make([]string, 0, len(parts))
@@ -378,6 +383,7 @@ func splitList(raw string) []string {
 	return out
 }
 
+// parseDurationEnv parses an optional non-negative duration environment variable.
 func parseDurationEnv(getenv func(string) string, key string) (time.Duration, error) {
 	raw := strings.TrimSpace(getenv(key))
 	if raw == "" {
@@ -390,6 +396,7 @@ func parseDurationEnv(getenv func(string) string, key string) (time.Duration, er
 	return value, nil
 }
 
+// parseBoolEnv parses an optional boolean environment variable.
 func parseBoolEnv(getenv func(string) string, key string) (bool, error) {
 	raw := strings.TrimSpace(getenv(key))
 	if raw == "" {
@@ -402,6 +409,7 @@ func parseBoolEnv(getenv func(string) string, key string) (bool, error) {
 	return value, nil
 }
 
+// parseOptionalBool handles fake boolean flags with an optional inline value.
 func parseOptionalBool(raw string, provided, defaultValue bool) (bool, error) {
 	if !provided {
 		return defaultValue, nil
@@ -413,6 +421,7 @@ func parseOptionalBool(raw string, provided, defaultValue bool) (bool, error) {
 	return value, nil
 }
 
+// envOr returns a trimmed environment value or the supplied fallback.
 func envOr(getenv func(string) string, key, fallback string) string {
 	if value := strings.TrimSpace(getenv(key)); value != "" {
 		return value
