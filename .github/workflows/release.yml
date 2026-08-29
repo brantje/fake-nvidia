@@ -189,6 +189,8 @@ jobs:
     permissions:
       contents: write
       packages: write
+    env:
+      GH_REPO: ${{ github.repository }}
 
     steps:
       - name: Download packaged release archives
