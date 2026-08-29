@@ -193,4 +193,7 @@ func writeTestBundle(t *testing.T, root string) {
 	if err := os.Symlink("libnvidia-ml.so.1", filepath.Join(root, "lib", "libnvidia-ml.so")); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(root, "lib", "libcuda.so.1"), []byte("mock-cuda"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 }
