@@ -101,7 +101,7 @@ func (b *ControlBackend) Reserve(ctx context.Context, device int, bytes uint64) 
 		return errors.New("CUDA control backend is not initialized")
 	}
 	err := b.manager.ReserveMemory(ctx, strconv.Itoa(device), bytes)
-	if err != nil && strings.Contains(err.Error(), "only ") && strings.Contains(err.Error(), " bytes free") {
+	if errors.Is(err, control.ErrInsufficientMemory) {
 		return fmt.Errorf("%w: %v", ErrOutOfMemory, err)
 	}
 	return err
@@ -136,7 +136,7 @@ func configuredCUDAVersion(configPath string) (int, error) {
 	if err != nil {
 		return 0, fmt.Errorf("open Mock NVML config for CUDA version: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
