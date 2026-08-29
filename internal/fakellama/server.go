@@ -69,7 +69,7 @@ func (s *Server) Handler() http.Handler {
 // Run starts the HTTP server, registers the real process PID in fake NVML,
 // waits through the configured model-load phase, and blocks until cancellation
 // or an injected failure. Registered resources are released on every return.
-func (s *Server) Run(ctx context.Context) error {
+func (s *Server) Run(ctx context.Context) (runErr error) {
 	if s == nil || s.registry == nil {
 		return errors.New("fake llama-server is not initialized")
 	}
@@ -108,7 +108,9 @@ func (s *Server) Run(ctx context.Context) error {
 		_ = httpServer.Shutdown(shutdownCtx)
 		cancelShutdown()
 		releaseCtx, cancelRelease := context.WithTimeout(context.Background(), 5*time.Second)
-		_ = s.ReleaseResources(releaseCtx)
+		if err := s.releaseResourcesWithRetry(releaseCtx); err != nil {
+			runErr = errors.Join(runErr, fmt.Errorf("release fake llama-server resources: %w", err))
+		}
 		cancelRelease()
 	}()
 
@@ -193,6 +195,29 @@ func (s *Server) Run(ctx context.Context) error {
 	}
 }
 
+// releaseResourcesWithRetry retries transient registry failures until cleanup
+// succeeds or ctx expires, preventing an exiting process from leaving phantom
+// PID/VRAM state after a one-off control-plane failure.
+func (s *Server) releaseResourcesWithRetry(ctx context.Context) error {
+	var lastErr error
+	for {
+		if err := s.ReleaseResources(ctx); err == nil {
+			return nil
+		} else {
+			lastErr = err
+		}
+		timer := time.NewTimer(50 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			if !timer.Stop() {
+				<-timer.C
+			}
+			return errors.Join(lastErr, ctx.Err())
+		case <-timer.C:
+		}
+	}
+}
+
 // ReleaseResources removes this PID from all selected fake GPUs. It is safe to
 // call more than once. A failed release remains retryable so transient control
 // failures do not permanently hide stale simulated process state.
@@ -213,6 +238,7 @@ func (s *Server) ReleaseResources(ctx context.Context) error {
 	return nil
 }
 
+// handleHealth exposes manager-facing loading/ready state.
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if !s.Ready() {
@@ -223,6 +249,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]any{"status": "ok"})
 }
 
+// handleModels returns the one deterministic fake model once ready.
 func (s *Server) handleModels(w http.ResponseWriter, _ *http.Request) {
 	if !s.requireReady(w) {
 		return
@@ -239,6 +266,7 @@ type chatRequest struct {
 	Stream bool   `json:"stream"`
 }
 
+// handleChatCompletions serves deterministic OpenAI-compatible chat responses.
 func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	if !s.requireReady(w) {
 		return
@@ -270,6 +298,7 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// writeChatStream writes deterministic SSE chunks and honors client cancellation.
 func (s *Server) writeChatStream(w http.ResponseWriter, r *http.Request, model string) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
@@ -317,6 +346,7 @@ func (s *Server) writeChatStream(w http.ResponseWriter, r *http.Request, model s
 	flusher.Flush()
 }
 
+// handleCompletions serves the minimal deterministic text completion endpoint.
 func (s *Server) handleCompletions(w http.ResponseWriter, r *http.Request) {
 	if !s.requireReady(w) {
 		return
@@ -336,6 +366,7 @@ func (s *Server) handleCompletions(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// requireReady rejects inference requests until the simulated load completes.
 func (s *Server) requireReady(w http.ResponseWriter) bool {
 	if s.Ready() {
 		return true
@@ -344,6 +375,7 @@ func (s *Server) requireReady(w http.ResponseWriter) bool {
 	return false
 }
 
+// writeJSON writes one JSON response with the requested status code.
 func writeJSON(w http.ResponseWriter, status int, value any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
