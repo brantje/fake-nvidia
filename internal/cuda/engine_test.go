@@ -13,6 +13,7 @@ type fakeBackend struct {
 	version int
 }
 
+// Devices returns a copy of the fake backend's current device state.
 func (b *fakeBackend) Devices(context.Context) ([]Device, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -21,6 +22,7 @@ func (b *fakeBackend) Devices(context.Context) ([]Device, error) {
 	return out, nil
 }
 
+// Reserve applies simulated allocation accounting to one fake device.
 func (b *fakeBackend) Reserve(_ context.Context, index int, bytes uint64) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -38,6 +40,7 @@ func (b *fakeBackend) Reserve(_ context.Context, index int, bytes uint64) error 
 	return errors.New("device not found")
 }
 
+// Release reverses simulated allocation accounting on one fake device.
 func (b *fakeBackend) Release(_ context.Context, index int, bytes uint64) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -55,8 +58,10 @@ func (b *fakeBackend) Release(_ context.Context, index int, bytes uint64) error 
 	return errors.New("device not found")
 }
 
+// CUDAVersion returns the configured packed CUDA version for engine tests.
 func (b *fakeBackend) CUDAVersion() int { return b.version }
 
+// testBackend returns a deterministic two-device backend fixture.
 func testBackend() *fakeBackend {
 	return &fakeBackend{
 		version: 13000,
@@ -67,6 +72,7 @@ func testBackend() *fakeBackend {
 	}
 }
 
+// TestEngineDeviceEnumerationAndSelection verifies discovery, selection, and memory queries.
 func TestEngineDeviceEnumerationAndSelection(t *testing.T) {
 	backend := testBackend()
 	engine, err := NewEngine(backend, FaultPolicy{OOMAfter: -1})
@@ -101,6 +107,7 @@ func TestEngineDeviceEnumerationAndSelection(t *testing.T) {
 	}
 }
 
+// TestEngineAllocationAccountingAndCapacityOOM verifies allocation accounting and capacity OOM behavior.
 func TestEngineAllocationAccountingAndCapacityOOM(t *testing.T) {
 	backend := testBackend()
 	engine, err := NewEngine(backend, FaultPolicy{OOMAfter: -1})
@@ -133,6 +140,7 @@ func TestEngineAllocationAccountingAndCapacityOOM(t *testing.T) {
 	}
 }
 
+// TestEngineDeterministicInjectedOOM verifies the configured allocation-count failure threshold.
 func TestEngineDeterministicInjectedOOM(t *testing.T) {
 	backend := testBackend()
 	engine, err := NewEngine(backend, FaultPolicy{OOMAfter: 1})
@@ -152,6 +160,7 @@ func TestEngineDeterministicInjectedOOM(t *testing.T) {
 	}
 }
 
+// TestEngineResetReleasesOnlyCurrentDevice verifies reset does not release another device's allocations.
 func TestEngineResetReleasesOnlyCurrentDevice(t *testing.T) {
 	backend := testBackend()
 	engine, err := NewEngine(backend, FaultPolicy{OOMAfter: -1})
@@ -183,6 +192,7 @@ func TestEngineResetReleasesOnlyCurrentDevice(t *testing.T) {
 	}
 }
 
+// TestParseCUDAVersion verifies valid major.minor versions map to CUDA's packed representation.
 func TestParseCUDAVersion(t *testing.T) {
 	for _, tc := range []struct {
 		input string
