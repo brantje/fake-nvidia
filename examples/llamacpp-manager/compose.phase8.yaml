@@ -13,11 +13,11 @@
 #   export PUID="$(id -u)" PGID="$(id -g)"
 #   docker compose -f examples/llamacpp-manager/compose.phase8.yaml up
 #
-# The default image is pinned to the LlamaCPP-Manager revision recorded for
-# Phase 8. Override LLAMACPP_MANAGER_IMAGE explicitly when advancing that pin.
+# The default image is pinned to the immutable LlamaCPP-Manager digest recorded
+# for Phase 8. Override LLAMACPP_MANAGER_IMAGE explicitly when advancing that pin.
 services:
   llamacpp-manager:
-    image: ${LLAMACPP_MANAGER_IMAGE:-ghcr.io/brantje/llamacpp-manager:main-0c26e8e}
+    image: ${LLAMACPP_MANAGER_IMAGE:-ghcr.io/brantje/llamacpp-manager@sha256:1cbd6bf1d31893cdcdf6126e1e4239d39f1a903e4837251d0cd528d7a7a70586}
     user: "${PUID:?set PUID}:${PGID:?set PGID}"
     ports:
       - "127.0.0.1:${PHASE8_PORT:-18888}:8000"
