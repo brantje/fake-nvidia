@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"testing"
+	"time"
 )
 
 type retryReleaseRegistry struct {
@@ -50,5 +51,42 @@ func TestReleaseResourcesRetriesAfterFailure(t *testing.T) {
 	}
 	if registry.releases != 2 {
 		t.Fatalf("release calls=%d want=2", registry.releases)
+	}
+}
+
+// TestRunRetriesDeferredReleaseBeforeExit verifies Run itself retries a
+// transient cleanup failure before returning to the process owner.
+func TestRunRetriesDeferredReleaseBeforeExit(t *testing.T) {
+	registry := &retryReleaseRegistry{}
+	server := NewServer(Config{
+		Host: "127.0.0.1", Port: 0, ModelPath: "/models/retry.gguf",
+		Targets: []string{"0"}, VRAMBytes: mib, VRAMExplicit: true,
+	}, registry, 321, io.Discard, io.Discard)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- server.Run(ctx) }()
+
+	deadline := time.Now().Add(2 * time.Second)
+	for !server.Ready() && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	if !server.Ready() {
+		cancel()
+		t.Fatal("server did not become ready")
+	}
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Run cleanup retry returned error: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Run did not finish after cleanup retry")
+	}
+	if registry.releases != 2 {
+		t.Fatalf("deferred release calls=%d want=2", registry.releases)
+	}
+	if server.registered.Load() {
+		t.Fatal("Run returned with fake GPU resources still registered")
 	}
 }
