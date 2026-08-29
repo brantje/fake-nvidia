@@ -134,8 +134,9 @@ typedef struct {
     unsigned int memoryPoolSupportedHandleTypes;
     int deferredMappingCudaArraySupported;
     int ipcEventSupported;
+    int clusterLaunch;
     int unifiedFunctionPointers;
-    int reserved[56];
+    int reserved[63];
 } fakeCudaDeviceProp;
 
 enum {
