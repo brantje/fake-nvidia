@@ -2,9 +2,13 @@ package main
 
 import (
 	"bytes"
+	"context"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestHandleInfoRequestMatchesManagerDiscovery(t *testing.T) {
@@ -25,6 +29,31 @@ func TestHandleInfoRequestMatchesManagerDiscovery(t *testing.T) {
 		if !strings.Contains(help, flag) {
 			t.Fatalf("help output missing %s: %q", flag, help)
 		}
+	}
+}
+
+func TestWaitForRegisterGate(t *testing.T) {
+	gate := filepath.Join(t.TempDir(), "release")
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- waitForRegisterGate(ctx, gate) }()
+
+	select {
+	case err := <-done:
+		t.Fatalf("gate returned before release: %v", err)
+	case <-time.After(75 * time.Millisecond):
+	}
+	if err := os.WriteFile(gate, []byte("release\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("gate did not release")
 	}
 }
 
