@@ -37,11 +37,10 @@ typedef struct {
 } cudaUUID_t;
 
 /*
- * Targeted CUDA 12 cudaDeviceProp layout used by the Phase 6 compatibility
- * surface. Keeping the complete targeted layout here ensures
- * cudaGetDeviceProperties initializes caller-visible fields beyond the small
- * prefix that fake-nvidia actively models. Unmodeled capability fields remain
- * zero rather than leaking caller memory or inventing hardware capabilities.
+ * CUDA 12.8 cudaDeviceProp layout used by the Phase 6 compatibility surface.
+ * Keeping the complete targeted layout here ensures cudaGetDeviceProperties
+ * initializes every caller-visible field. Unmodeled capabilities remain zero
+ * rather than leaking caller memory or inventing hardware capabilities.
  */
 typedef struct {
     char name[256];
@@ -124,6 +123,19 @@ typedef struct {
     int maxBlocksPerMultiProcessor;
     int accessPolicyMaxWindowSize;
     size_t reservedSharedMemPerBlock;
+    int hostRegisterSupported;
+    int sparseCudaArraySupported;
+    int hostRegisterReadOnlySupported;
+    int timelineSemaphoreInteropSupported;
+    int memoryPoolsSupported;
+    int gpuDirectRDMASupported;
+    unsigned int gpuDirectRDMAFlushWritesOptions;
+    int gpuDirectRDMAWritesOrdering;
+    unsigned int memoryPoolSupportedHandleTypes;
+    int deferredMappingCudaArraySupported;
+    int ipcEventSupported;
+    int unifiedFunctionPointers;
+    int reserved[56];
 } fakeCudaDeviceProp;
 
 enum {
