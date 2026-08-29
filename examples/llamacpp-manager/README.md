@@ -15,6 +15,8 @@ go run ./cmd/fake-nvidia up \
   --runtime-dir "$PWD/.runtime" \
   --root "$PWD/.fake-nvidia/llamacpp-manager"
 
+mkdir -p examples/llamacpp-manager/data/{config,models}
+
 export FAKE_NVIDIA_ROOT="$PWD/.fake-nvidia/llamacpp-manager"
 export PUID="$(id -u)"
 export PGID="$(id -g)"
@@ -58,8 +60,8 @@ docker compose -f examples/llamacpp-manager/docker-compose.yaml restart
 The Compose file supports these environment variables:
 
 - `LCM_PORT` — host port, default `8080`.
-- `LCM_CONFIG_DIR` — host directory mounted at `/config`.
-- `LCM_MODELS_DIR` — host directory mounted at `/models`.
+- `LCM_CONFIG_HOST_DIR` — host directory mounted at `/config`.
+- `LCM_MODELS_HOST_DIR` — host directory mounted at `/models`.
 - `PUID` / `PGID` — container user IDs, default `1000:1000`.
 - `LLAMACPP_MANAGER_IMAGE` — manager image override. The default is the immutable image validated by Phase 8.
 
