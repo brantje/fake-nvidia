@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"math/big"
 	"os"
 	"strconv"
 	"strings"
@@ -288,7 +289,8 @@ func (c Config) RequiredVRAMBytes() (uint64, error) {
 }
 
 // ParseBytes parses raw byte counts and binary/decimal byte suffixes used by
-// fake-llama-server resource controls.
+// fake-llama-server resource controls. Values are rounded to the nearest byte
+// using exact rational arithmetic, avoiding float64 loss at the uint64 boundary.
 func ParseBytes(raw string) (uint64, error) {
 	s := strings.TrimSpace(raw)
 	if s == "" {
@@ -297,13 +299,13 @@ func ParseBytes(raw string) (uint64, error) {
 	upper := strings.ToUpper(s)
 	units := []struct {
 		suffix string
-		mult   float64
+		mult   uint64
 	}{
 		{"GIB", 1024 * 1024 * 1024}, {"GB", 1000 * 1000 * 1000},
 		{"MIB", 1024 * 1024}, {"MB", 1000 * 1000},
 		{"KIB", 1024}, {"KB", 1000}, {"B", 1},
 	}
-	mult := float64(1)
+	mult := uint64(1)
 	number := upper
 	for _, unit := range units {
 		if strings.HasSuffix(upper, unit.suffix) {
@@ -312,15 +314,24 @@ func ParseBytes(raw string) (uint64, error) {
 			break
 		}
 	}
-	value, err := strconv.ParseFloat(number, 64)
-	if err != nil || value < 0 || math.IsInf(value, 0) || math.IsNaN(value) {
+	value, ok := new(big.Rat).SetString(number)
+	if !ok || value.Sign() < 0 {
 		return 0, fmt.Errorf("invalid size %q", raw)
 	}
-	bytes := math.Round(value * mult)
-	if bytes >= float64(^uint64(0)) {
+	value.Mul(value, new(big.Rat).SetUint64(mult))
+	numerator := value.Num()
+	denominator := value.Denom()
+	quotient := new(big.Int)
+	remainder := new(big.Int)
+	quotient.QuoRem(numerator, denominator, remainder)
+	twiceRemainder := new(big.Int).Lsh(new(big.Int).Set(remainder), 1)
+	if twiceRemainder.Cmp(denominator) >= 0 {
+		quotient.Add(quotient, big.NewInt(1))
+	}
+	if !quotient.IsUint64() {
 		return 0, fmt.Errorf("size %q overflows uint64", raw)
 	}
-	return uint64(bytes), nil
+	return quotient.Uint64(), nil
 }
 
 // durationValue reads and parses a non-negative duration from one CLI value.
