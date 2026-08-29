@@ -36,6 +36,13 @@ typedef struct {
     unsigned char bytes[16];
 } cudaUUID_t;
 
+/*
+ * Targeted CUDA 12 cudaDeviceProp layout used by the Phase 6 compatibility
+ * surface. Keeping the complete targeted layout here ensures
+ * cudaGetDeviceProperties initializes caller-visible fields beyond the small
+ * prefix that fake-nvidia actively models. Unmodeled capability fields remain
+ * zero rather than leaking caller memory or inventing hardware capabilities.
+ */
 typedef struct {
     char name[256];
     cudaUUID_t uuid;
@@ -53,7 +60,71 @@ typedef struct {
     size_t totalConstMem;
     int major;
     int minor;
-} fakeCudaDevicePropPrefix;
+    size_t textureAlignment;
+    size_t texturePitchAlignment;
+    int deviceOverlap;
+    int multiProcessorCount;
+    int kernelExecTimeoutEnabled;
+    int integrated;
+    int canMapHostMemory;
+    int computeMode;
+    int maxTexture1D;
+    int maxTexture1DMipmap;
+    int maxTexture1DLinear;
+    int maxTexture2D[2];
+    int maxTexture2DMipmap[2];
+    int maxTexture2DLinear[3];
+    int maxTexture2DGather[2];
+    int maxTexture3D[3];
+    int maxTexture3DAlt[3];
+    int maxTextureCubemap;
+    int maxTexture1DLayered[2];
+    int maxTexture2DLayered[3];
+    int maxTextureCubemapLayered[2];
+    int maxSurface1D;
+    int maxSurface2D[2];
+    int maxSurface3D[3];
+    int maxSurface1DLayered[2];
+    int maxSurface2DLayered[3];
+    int maxSurfaceCubemap;
+    int maxSurfaceCubemapLayered[2];
+    size_t surfaceAlignment;
+    int concurrentKernels;
+    int ECCEnabled;
+    int pciBusID;
+    int pciDeviceID;
+    int pciDomainID;
+    int tccDriver;
+    int asyncEngineCount;
+    int unifiedAddressing;
+    int memoryClockRate;
+    int memoryBusWidth;
+    int l2CacheSize;
+    int persistingL2CacheMaxSize;
+    int maxThreadsPerMultiProcessor;
+    int streamPrioritiesSupported;
+    int globalL1CacheSupported;
+    int localL1CacheSupported;
+    size_t sharedMemPerMultiprocessor;
+    int regsPerMultiprocessor;
+    int managedMemory;
+    int isMultiGpuBoard;
+    int multiGpuBoardGroupID;
+    int hostNativeAtomicSupported;
+    int singleToDoublePrecisionPerfRatio;
+    int pageableMemoryAccess;
+    int concurrentManagedAccess;
+    int computePreemptionSupported;
+    int canUseHostPointerForRegisteredMem;
+    int cooperativeLaunch;
+    int cooperativeMultiDeviceLaunch;
+    size_t sharedMemPerBlockOptin;
+    int pageableMemoryAccessUsesHostPageTables;
+    int directManagedMemAccessFromHost;
+    int maxBlocksPerMultiProcessor;
+    int accessPolicyMaxWindowSize;
+    size_t reservedSharedMemPerBlock;
+} fakeCudaDeviceProp;
 
 enum {
     FAKE_CUDA_SUCCESS = 0,
