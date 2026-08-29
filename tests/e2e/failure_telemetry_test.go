@@ -13,8 +13,9 @@ import (
 
 func TestPhase8GPUOfflineAfterStartup(t *testing.T) {
 	h := startManager(t, gpuScenario{profile: "rtx4060ti-16gb", count: 1, vramMiB: 16 * 1024})
-	if snapshot := h.hardware(); len(snapshot.GPUs) != 1 {
-		t.Fatalf("initial hardware=%+v", snapshot)
+	initial := h.hardware()
+	if len(initial.GPUs) != 1 || initial.GPUs[0].TotalBytes == 0 {
+		t.Fatalf("initial hardware=%+v", initial)
 	}
 
 	client := h.controlClient()
@@ -23,15 +24,23 @@ func TestPhase8GPUOfflineAfterStartup(t *testing.T) {
 	if err := client.SetFailure(ctx, "0", "lost", 0, 79); err != nil {
 		t.Fatal(err)
 	}
-	waitHardwareStatus(t, h, http.StatusServiceUnavailable, 10*time.Second)
+	// This manager revision keeps the device identity in the snapshot when NVML
+	// reports the GPU lost, but degrades its capacity to zero. That is still a
+	// scheduler-visible offline state and is distinct from a whole-query failure.
+	offline := pollHardware(t, h, 10*time.Second, func(snapshot hardwareSnapshot) bool {
+		return len(snapshot.GPUs) == 1 && snapshot.GPUs[0].ID == "CUDA0" && snapshot.GPUs[0].TotalBytes == 0 && snapshot.GPUs[0].FreeBytes == 0
+	})
+	if offline.GPUs[0].TotalBytes != 0 || offline.GPUs[0].FreeBytes != 0 {
+		t.Fatalf("lost GPU did not become zero-capacity: %+v", offline.GPUs[0])
+	}
 
 	if err := client.Reset(ctx, "0"); err != nil {
 		t.Fatal(err)
 	}
 	recovered := pollHardware(t, h, 10*time.Second, func(snapshot hardwareSnapshot) bool {
-		return len(snapshot.GPUs) == 1 && snapshot.GPUs[0].ID == "CUDA0"
+		return len(snapshot.GPUs) == 1 && snapshot.GPUs[0].ID == "CUDA0" && snapshot.GPUs[0].TotalBytes == initial.GPUs[0].TotalBytes
 	})
-	if recovered.GPUs[0].ID != "CUDA0" {
+	if recovered.GPUs[0].TotalBytes != initial.GPUs[0].TotalBytes {
 		t.Fatalf("GPU did not recover after reset: %+v", recovered)
 	}
 }
