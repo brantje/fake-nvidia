@@ -6,22 +6,27 @@
 #include <stdlib.h>
 #include <string.h>
 
+/* Allocate a tiny host token used as an opaque simulated device pointer. */
 void *fake_cuda_alloc_token(void) {
     return malloc(1);
 }
 
+/* Release a host token previously created for a simulated allocation. */
 void fake_cuda_free_token(void *ptr) {
     free(ptr);
 }
 
+/* Convert an opaque token pointer to the integer form used by Go bookkeeping. */
 uintptr_t fake_cuda_token_value(void *ptr) {
     return (uintptr_t)ptr;
 }
 
+/* Convert an integer allocation token back to its host pointer form. */
 void *fake_cuda_token_pointer(uintptr_t value) {
     return (void *)value;
 }
 
+/* Copy a C string into a bounded caller-owned buffer with NUL termination. */
 void fake_cuda_copy_string(char *dst, int len, const char *src) {
     if (dst == NULL || len <= 0) {
         return;
@@ -38,6 +43,7 @@ void fake_cuda_copy_string(char *dst, int len, const char *src) {
     dst[n] = '\0';
 }
 
+/* Decode one hexadecimal digit, returning -1 for invalid input. */
 static int hex_value(char c) {
     if (c >= '0' && c <= '9') return c - '0';
     c = (char)tolower((unsigned char)c);
@@ -45,6 +51,7 @@ static int hex_value(char c) {
     return -1;
 }
 
+/* Parse a deterministic fake GPU UUID into CUDA's 16-byte UUID form. */
 int fake_cuda_parse_uuid(const char *text, unsigned char out[16]) {
     if (text == NULL || out == NULL) return 0;
     if (strncmp(text, "GPU-", 4) == 0) text += 4;
@@ -66,6 +73,7 @@ int fake_cuda_parse_uuid(const char *text, unsigned char out[16]) {
     return 1;
 }
 
+/* Initialize the complete targeted CUDA 12 device-property layout. */
 void fake_cuda_fill_properties(void *dst, const char *name, const char *uuid,
                                size_t total_bytes, int major, int minor) {
     if (dst == NULL) return;
@@ -92,10 +100,12 @@ void fake_cuda_fill_properties(void *dst, const char *name, const char *uuid,
     prop->minor = minor;
 }
 
+/* Perform the only supported runtime memcpy direction: host to host. */
 void fake_cuda_memcpy_host(void *dst, const void *src, size_t count) {
     if (count != 0) memcpy(dst, src, count);
 }
 
+/* Return the stable symbolic name for a supported CUDA driver result. */
 const char *fake_cuda_driver_error_name(int code) {
     switch (code) {
     case 0: return "CUDA_SUCCESS";
@@ -110,6 +120,7 @@ const char *fake_cuda_driver_error_name(int code) {
     }
 }
 
+/* Return a human-readable string for a supported CUDA driver result. */
 const char *fake_cuda_driver_error_string(int code) {
     switch (code) {
     case 0: return "no error";
@@ -124,6 +135,7 @@ const char *fake_cuda_driver_error_string(int code) {
     }
 }
 
+/* Return the stable symbolic name for a supported CUDA runtime result. */
 const char *fake_cuda_runtime_error_name(int code) {
     switch (code) {
     case 0: return "cudaSuccess";
@@ -137,6 +149,7 @@ const char *fake_cuda_runtime_error_name(int code) {
     }
 }
 
+/* Return a human-readable string for a supported CUDA runtime result. */
 const char *fake_cuda_runtime_error_string(int code) {
     switch (code) {
     case 0: return "no error";
@@ -150,6 +163,7 @@ const char *fake_cuda_runtime_error_string(int code) {
     }
 }
 
+/* Report whether cuGetProcAddress may expose a named driver symbol. */
 static int supported_symbol(const char *symbol) {
     static const char *const names[] = {
         "cuInit", "cuDriverGetVersion", "cuDeviceGetCount", "cuDeviceGet",
@@ -168,6 +182,7 @@ static int supported_symbol(const char *symbol) {
     return 0;
 }
 
+/* Resolve an allow-listed driver symbol from the already-loaded CUDA shim. */
 void *fake_cuda_lookup_symbol(const char *symbol) {
     if (!supported_symbol(symbol)) return NULL;
     void *handle = dlopen("libcuda.so.1", RTLD_NOW | RTLD_NOLOAD);
