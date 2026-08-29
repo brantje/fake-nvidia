@@ -100,9 +100,16 @@ func TestParseBytes(t *testing.T) {
 	}
 }
 
-// TestParseBytesRejectsUint64Overflow verifies an exact 2^64 request is
-// rejected before the float-to-uint64 conversion can become implementation-dependent.
-func TestParseBytesRejectsUint64Overflow(t *testing.T) {
+// TestParseBytesUint64Boundary verifies exact parsing preserves the maximum
+// valid uint64 while rejecting the first value outside the domain.
+func TestParseBytesUint64Boundary(t *testing.T) {
+	got, err := ParseBytes("18446744073709551615")
+	if err != nil {
+		t.Fatalf("parse max uint64: %v", err)
+	}
+	if got != ^uint64(0) {
+		t.Fatalf("max uint64 parse=%d want=%d", got, ^uint64(0))
+	}
 	if _, err := ParseBytes("18446744073709551616"); err == nil {
 		t.Fatal("expected uint64 overflow error")
 	}
