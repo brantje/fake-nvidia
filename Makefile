@@ -1,6 +1,6 @@
 RUNTIME_DIR ?= $(CURDIR)/.runtime
 
-.PHONY: runtime compatibility docker-integration phase2 phase3 phase4 phase5 phase6 phase7
+.PHONY: runtime compatibility docker-integration phase7-integration phase2 phase3 phase4 phase5 phase6 phase7
 
 runtime:
 	bash scripts/build-runtime.sh "$(RUNTIME_DIR)"
@@ -11,6 +11,11 @@ compatibility: runtime
 	test -f "$(RUNTIME_DIR)/lib/libcuda.so.1"
 	test -f "$(RUNTIME_DIR)/lib/libcudart.so"
 	FAKE_NVIDIA_RUNTIME_DIR="$(RUNTIME_DIR)" go test -tags=integration -v ./tests/compatibility
+
+phase7-integration:
+	test -x "$(RUNTIME_DIR)/bin/nvidia-smi"
+	test -x "$(RUNTIME_DIR)/bin/fake-llama-server"
+	FAKE_NVIDIA_RUNTIME_DIR="$(RUNTIME_DIR)" go test -tags=integration -run '^TestPhase7' -v ./tests/compatibility
 
 docker-integration: runtime
 	test -x "$(RUNTIME_DIR)/bin/nvidia-smi"
