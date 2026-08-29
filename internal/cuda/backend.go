@@ -154,7 +154,7 @@ func configuredCUDAVersion(configPath string) (int, error) {
 
 func parseCUDAVersion(raw string) (int, error) {
 	parts := strings.Split(strings.TrimSpace(raw), ".")
-	if len(parts) < 2 {
+	if len(parts) != 2 {
 		return 0, fmt.Errorf("CUDA version %q must be major.minor", raw)
 	}
 	major, err := strconv.Atoi(parts[0])
