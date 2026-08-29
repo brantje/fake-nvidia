@@ -85,6 +85,9 @@ func TestPhase8StartupTimeoutReleasesReservedVRAM(t *testing.T) {
 		},
 	})
 	baseline := h.hardware()
+	if len(baseline.GPUs) != 1 {
+		t.Fatalf("baseline hardware=%+v", baseline)
+	}
 	modelID := h.createSparseModel("startup-timeout", 4*gib)
 	instanceID := h.createInstance(modelID, "startup-timeout-worker", true)
 	h.startInstance(instanceID, http.StatusServiceUnavailable)
