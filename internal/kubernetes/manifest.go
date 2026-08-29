@@ -31,12 +31,12 @@ func RenderManifest(opts ManifestOptions) ([]byte, error) {
 		return nil, fmt.Errorf("device count must be between 1 and 8, got %d", opts.DeviceCount)
 	}
 	if len(strings.TrimSpace(string(opts.ConfigYAML))) == 0 {
-		return nil, errors.New("Mock NVML config is required")
+		return nil, errors.New("mock NVML config is required")
 	}
 	if !validDNSLabel(opts.Namespace) {
 		return nil, fmt.Errorf("invalid namespace %q", opts.Namespace)
 	}
-	if !strings.Contains(opts.CDIKind, "/") {
+	if !validCDIKind(opts.CDIKind) {
 		return nil, fmt.Errorf("invalid CDI kind %q", opts.CDIKind)
 	}
 
@@ -78,6 +78,8 @@ spec:
         app.kubernetes.io/name: fake-nvidia
         app.kubernetes.io/component: node-installer
     spec:
+      nodeSelector:
+        fake-nvidia.com/enabled: "true"
       terminationGracePeriodSeconds: 15
       tolerations:
         - operator: Exists
