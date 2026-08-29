@@ -22,6 +22,7 @@ type fakeRegistry struct {
 	err       error
 }
 
+// Register records one simulated process registration for lifecycle tests.
 func (f *fakeRegistry) Register(_ context.Context, pid uint32, _ string, _ []string, totalBytes uint64, _ []float64, _, _ uint32) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -34,6 +35,7 @@ func (f *fakeRegistry) Register(_ context.Context, pid uint32, _ string, _ []str
 	return nil
 }
 
+// Resize records one simulated process-memory resize for lifecycle tests.
 func (f *fakeRegistry) Resize(_ context.Context, pid uint32, _ string, _ []string, totalBytes uint64, _ []float64, _, _ uint32) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -46,6 +48,7 @@ func (f *fakeRegistry) Resize(_ context.Context, pid uint32, _ string, _ []strin
 	return nil
 }
 
+// Release records one simulated process cleanup for lifecycle tests.
 func (f *fakeRegistry) Release(_ context.Context, pid uint32, _ []string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -54,6 +57,7 @@ func (f *fakeRegistry) Release(_ context.Context, pid uint32, _ []string) error 
 	return nil
 }
 
+// counts snapshots fake registry call counts and the latest memory amount.
 func (f *fakeRegistry) counts() (registers, resizes, releases int, bytes uint64) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -181,6 +185,7 @@ func TestReleaseResourcesIsIdempotent(t *testing.T) {
 	}
 }
 
+// waitForAddr waits until the server exposes its actual ephemeral listen address.
 func waitForAddr(t *testing.T, server *Server) string {
 	t.Helper()
 	deadline := time.Now().Add(2 * time.Second)
@@ -194,6 +199,7 @@ func waitForAddr(t *testing.T, server *Server) string {
 	return ""
 }
 
+// waitForReady polls the health endpoint until the fake model load completes.
 func waitForReady(t *testing.T, base string) {
 	t.Helper()
 	deadline := time.Now().Add(2 * time.Second)
