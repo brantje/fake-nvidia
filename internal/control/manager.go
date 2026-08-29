@@ -11,6 +11,10 @@ import (
 
 const defaultOverrideFile = "/var/lib/nvml-mock/driver/config/overrides.yaml"
 
+// ErrInsufficientMemory marks a reservation that exceeds the device's current
+// effective free VRAM.
+var ErrInsufficientMemory = errors.New("insufficient GPU memory")
+
 // Manager composes effective-state reads with upstream-backed mutations.
 type Manager struct {
 	Client   *Client
@@ -95,7 +99,7 @@ func (m *Manager) ReserveMemory(ctx context.Context, target string, delta uint64
 			return err
 		}
 		if delta > device.FreeBytes {
-			return fmt.Errorf("cannot reserve %d bytes: only %d bytes free", delta, device.FreeBytes)
+			return fmt.Errorf("%w: cannot reserve %d bytes: only %d bytes free", ErrInsufficientMemory, delta, device.FreeBytes)
 		}
 		used, err := addBytes(device.UsedBytes, delta)
 		if err != nil {

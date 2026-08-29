@@ -193,4 +193,18 @@ func writeTestBundle(t *testing.T, root string) {
 	if err := os.Symlink("libnvidia-ml.so.1", filepath.Join(root, "lib", "libnvidia-ml.so")); err != nil {
 		t.Fatal(err)
 	}
+	cuda := filepath.Join(root, "lib", "libcuda.so.1")
+	if err := os.WriteFile(cuda, []byte("cuda"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for name, target := range map[string]string{
+		"libcuda.so":      "libcuda.so.1",
+		"libcudart.so.12": "libcuda.so.1",
+		"libcudart.so.13": "libcuda.so.1",
+		"libcudart.so":    "libcudart.so.13",
+	} {
+		if err := os.Symlink(target, filepath.Join(root, "lib", name)); err != nil {
+			t.Fatal(err)
+		}
+	}
 }

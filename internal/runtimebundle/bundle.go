@@ -30,8 +30,11 @@ func (b Bundle) RealNvidiaSMI() string { return filepath.Join(b.Root, "bin", "nv
 // Control returns the bundled nvml-mock-ctl path.
 func (b Bundle) Control() string { return filepath.Join(b.Root, "bin", "nvml-mock-ctl") }
 
-// LibraryDir returns the directory containing libnvidia-ml.so.
+// LibraryDir returns the directory containing NVIDIA-compatible shared libraries.
 func (b Bundle) LibraryDir() string { return filepath.Join(b.Root, "lib") }
+
+// CUDA returns the Phase 6 CUDA driver/runtime shim.
+func (b Bundle) CUDA() string { return filepath.Join(b.LibraryDir(), "libcuda.so.1") }
 
 // Validate checks that the minimum fake-nvidia runtime artifacts are present and usable.
 func (b Bundle) Validate() error {
@@ -46,6 +49,7 @@ func (b Bundle) Validate() error {
 		{path: b.RealNvidiaSMI(), executable: true},
 		{path: b.Control(), executable: true},
 		{path: filepath.Join(b.LibraryDir(), "libnvidia-ml.so.1")},
+		{path: b.CUDA()},
 	} {
 		info, err := os.Stat(artifact.path)
 		if err != nil {
@@ -56,6 +60,28 @@ func (b Bundle) Validate() error {
 		}
 		if artifact.executable && info.Mode().Perm()&0o111 == 0 {
 			return fmt.Errorf("runtime bundle artifact is not executable: %s", artifact.path)
+		}
+	}
+
+	for _, alias := range []string{
+		filepath.Join(b.LibraryDir(), "libcuda.so"),
+		filepath.Join(b.LibraryDir(), "libcudart.so.12"),
+		filepath.Join(b.LibraryDir(), "libcudart.so.13"),
+		filepath.Join(b.LibraryDir(), "libcudart.so"),
+	} {
+		info, err := os.Lstat(alias)
+		if err != nil {
+			return fmt.Errorf("runtime bundle missing CUDA alias %s: %w", alias, err)
+		}
+		if info.Mode()&os.ModeSymlink == 0 {
+			return fmt.Errorf("runtime bundle CUDA alias is not a symlink: %s", alias)
+		}
+		target, err := os.Stat(alias)
+		if err != nil {
+			return fmt.Errorf("runtime bundle CUDA alias is broken %s: %w", alias, err)
+		}
+		if !target.Mode().IsRegular() {
+			return fmt.Errorf("runtime bundle CUDA alias target is not a regular file: %s", alias)
 		}
 	}
 	return nil
