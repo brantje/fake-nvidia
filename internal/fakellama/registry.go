@@ -30,6 +30,12 @@ type NVMLRegistry struct {
 	manager *control.Manager
 }
 
+type priorProcess struct {
+	target  string
+	process control.Process
+	existed bool
+}
+
 // NewNVMLRegistry constructs a process registry around an existing manager.
 func NewNVMLRegistry(manager *control.Manager) *NVMLRegistry {
 	return &NVMLRegistry{manager: manager}
@@ -83,12 +89,7 @@ func (r *NVMLRegistry) apply(ctx context.Context, pid uint32, name string, targe
 		return err
 	}
 
-	type prior struct {
-		target  string
-		process control.Process
-		existed bool
-	}
-	applied := make([]prior, 0, len(targets))
+	applied := make([]priorProcess, 0, len(targets))
 	for i, target := range targets {
 		before, old, existed, err := r.deviceAndProcess(ctx, target, pid)
 		if err != nil {
@@ -122,16 +123,12 @@ func (r *NVMLRegistry) apply(ctx context.Context, pid uint32, name string, targe
 			r.rollback(ctx, pid, applied)
 			return fmt.Errorf("register fake llama-server on GPU %s: %w", target, err)
 		}
-		applied = append(applied, prior{target: target, process: old, existed: existed})
+		applied = append(applied, priorProcess{target: target, process: old, existed: existed})
 	}
 	return nil
 }
 
-func (r *NVMLRegistry) rollback(ctx context.Context, pid uint32, applied []struct {
-	target  string
-	process control.Process
-	existed bool
-}) {
+func (r *NVMLRegistry) rollback(ctx context.Context, pid uint32, applied []priorProcess) {
 	for i := len(applied) - 1; i >= 0; i-- {
 		item := applied[i]
 		before, _, _, err := r.deviceAndProcess(ctx, item.target, pid)
