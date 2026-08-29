@@ -15,6 +15,8 @@ import (
 
 const consumerImage = "debian:bookworm-20260824-slim@sha256:88200866dfff7ea7f5cbcb6ec7c8a701889efe6fe859fe64d6990e4b07ea4171"
 
+// TestCPUOnlyConsumerInjection verifies transparent Compose injection and the
+// exact six-field nvidia-smi discovery contract consumed by LlamaCPP-Manager.
 func TestCPUOnlyConsumerInjection(t *testing.T) {
 	runtimeRoot := os.Getenv("FAKE_NVIDIA_RUNTIME_DIR")
 	if runtimeRoot == "" {
@@ -88,6 +90,7 @@ func TestCPUOnlyConsumerInjection(t *testing.T) {
 	}
 }
 
+// dockerInjectionArgs returns the raw docker-run equivalent of the Compose override.
 func dockerInjectionArgs(root string) []string {
 	return []string{
 		"--mount", "type=bind,src=" + filepath.Join(root, "runtime", "bin", "nvidia-smi") + ",dst=/usr/local/bin/nvidia-smi,readonly",
@@ -101,6 +104,7 @@ func dockerInjectionArgs(root string) []string {
 	}
 }
 
+// runtimeFingerprint hashes immutable source runtime artifacts for before/after checks.
 func runtimeFingerprint(t *testing.T, root string) [32]byte {
 	t.Helper()
 	h := sha256.New()
@@ -122,6 +126,7 @@ func runtimeFingerprint(t *testing.T, root string) [32]byte {
 	return sum
 }
 
+// repositoryRoot resolves the checkout root from this integration test source file.
 func repositoryRoot(t *testing.T) string {
 	t.Helper()
 	_, file, _, ok := runtime.Caller(0)
@@ -131,6 +136,7 @@ func repositoryRoot(t *testing.T) string {
 	return filepath.Clean(filepath.Join(filepath.Dir(file), "..", ".."))
 }
 
+// run executes a command in the repository and fails the test with combined output.
 func run(t *testing.T, dir string, env []string, name string, args ...string) string {
 	t.Helper()
 	cmd := exec.Command(name, args...)
@@ -145,6 +151,7 @@ func run(t *testing.T, dir string, env []string, name string, args ...string) st
 	return string(out)
 }
 
+// nonEmptyLines returns trimmed-output records without blank lines.
 func nonEmptyLines(out string) []string {
 	var lines []string
 	for _, line := range strings.Split(out, "\n") {
