@@ -69,7 +69,7 @@ int fake_cuda_parse_uuid(const char *text, unsigned char out[16]) {
 void fake_cuda_fill_properties(void *dst, const char *name, const char *uuid,
                                size_t total_bytes, int major, int minor) {
     if (dst == NULL) return;
-    fakeCudaDevicePropPrefix *prop = (fakeCudaDevicePropPrefix *)dst;
+    fakeCudaDeviceProp *prop = (fakeCudaDeviceProp *)dst;
     memset(prop, 0, sizeof(*prop));
     fake_cuda_copy_string(prop->name, (int)sizeof(prop->name), name);
     (void)fake_cuda_parse_uuid(uuid, prop->uuid.bytes);
@@ -85,6 +85,8 @@ void fake_cuda_fill_properties(void *dst, const char *name, const char *uuid,
     prop->maxGridSize[0] = 2147483647;
     prop->maxGridSize[1] = 65535;
     prop->maxGridSize[2] = 65535;
+    /* Clock rate is not modeled by fake-nvidia profiles; zero means unknown. */
+    prop->clockRate = 0;
     prop->totalConstMem = 64 * 1024;
     prop->major = major;
     prop->minor = minor;
