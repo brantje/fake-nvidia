@@ -136,14 +136,14 @@ func (h *managerHarness) createManualInstance(modelID, name, device string) stri
 	h.t.Helper()
 	var response instanceResponse
 	h.requestJSON(http.MethodPost, "/api/v1/instances", map[string]any{
-		"model_id":          modelID,
-		"name":              name,
-		"enabled":           true,
-		"autoload_enabled":  true,
-		"eviction_enabled":  true,
-		"gpu_mode":          "manual",
-		"gpu_devices":       []string{device},
-		"request_log_mode":  "metadata",
+		"model_id":         modelID,
+		"name":             name,
+		"enabled":          true,
+		"autoload_enabled": true,
+		"eviction_enabled": true,
+		"gpu_mode":         "manual",
+		"gpu_devices":      []string{device},
+		"request_log_mode": "metadata",
 	}, http.StatusCreated, &response)
 	if response.ID == "" || response.ModelID != modelID {
 		h.t.Fatalf("unexpected instance response: %+v", response)

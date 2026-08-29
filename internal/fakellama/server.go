@@ -257,7 +257,7 @@ func (s *Server) handleModels(w http.ResponseWriter, _ *http.Request) {
 	model := filepath.Base(s.cfg.ModelPath)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"object": "list",
-		"data": []map[string]any{{"id": model, "object": "model", "owned_by": "fake-nvidia"}},
+		"data":   []map[string]any{{"id": model, "object": "model", "owned_by": "fake-nvidia"}},
 	})
 }
 

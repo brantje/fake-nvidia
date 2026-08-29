@@ -18,8 +18,8 @@ const computeAppsQuery = "--query-compute-apps=pid,gpu_uuid,used_memory,process_
 func TestComputeAppsQueryCompatibility(t *testing.T) {
 	catalog := loadCatalog(t)
 	cfg := compose(t, catalog, config.Spec{Devices: []config.DeviceRequest{{
-		Profile: "rtx4090-24gb",
-		UsedMiB: 3072,
+		Profile:   "rtx4090-24gb",
+		UsedMiB:   3072,
 		Processes: []config.Process{{PID: 3101, Type: "C", Name: "llama-server", UsedMemoryMiB: 2048, SMUtil: 42, MemoryUtil: 11}},
 	}}})
 	bundle := requireBundle(t)
@@ -40,8 +40,8 @@ func TestComputeAppsQueryCompatibility(t *testing.T) {
 func TestPMonLlamaCPPManagerForms(t *testing.T) {
 	catalog := loadCatalog(t)
 	cfg := compose(t, catalog, config.Spec{Devices: []config.DeviceRequest{{
-		Profile: "rtx4060ti-16gb",
-		UsedMiB: 1024,
+		Profile:   "rtx4060ti-16gb",
+		UsedMiB:   1024,
 		Processes: []config.Process{{PID: 3201, Type: "C", Name: "llama-server", UsedMemoryMiB: 768, SMUtil: 63, MemoryUtil: 17}},
 	}}})
 	bundle := requireBundle(t)
@@ -71,8 +71,8 @@ func TestPMonMultipleProcessesAndOnePIDOnMultipleGPUs(t *testing.T) {
 			},
 		},
 		{
-			Profile: "rtx4060ti-16gb",
-			UsedMiB: 2048,
+			Profile:   "rtx4060ti-16gb",
+			UsedMiB:   2048,
 			Processes: []config.Process{{PID: 3301, Name: "shared-worker", UsedMemoryMiB: 1536, SMUtil: 78}},
 		},
 	}})
@@ -102,8 +102,8 @@ func TestPMonMultipleProcessesAndOnePIDOnMultipleGPUs(t *testing.T) {
 func TestRuntimeProcessMutationIsVisibleAcrossInvocations(t *testing.T) {
 	catalog := loadCatalog(t)
 	cfg := compose(t, catalog, config.Spec{Devices: []config.DeviceRequest{{
-		Profile: "rtx4090-24gb",
-		UsedMiB: 2048,
+		Profile:   "rtx4090-24gb",
+		UsedMiB:   2048,
 		Processes: []config.Process{{PID: 3401, Name: "old-worker", UsedMemoryMiB: 1024, SMUtil: 15}},
 	}}})
 	bundle := requireBundle(t)

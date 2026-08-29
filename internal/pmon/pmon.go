@@ -8,14 +8,14 @@ import (
 
 // Sample is the subset of per-process GPU utilization rendered by nvidia-smi pmon.
 type Sample struct {
-	GPUIndex   int
-	PID        uint32
-	Type       string
-	SMUtil     uint32
-	MemoryUtil uint32
+	GPUIndex    int
+	PID         uint32
+	Type        string
+	SMUtil      uint32
+	MemoryUtil  uint32
 	EncoderUtil uint32
 	DecoderUtil uint32
-	Name       string
+	Name        string
 }
 
 // Matches reports whether args are one of the one-shot pmon forms required by
