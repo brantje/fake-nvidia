@@ -8,6 +8,7 @@ runtime:
 compatibility: runtime
 	test -x "$(RUNTIME_DIR)/bin/nvidia-smi"
 	test -f "$(RUNTIME_DIR)/lib/libcuda.so.1"
+	test -f "$(RUNTIME_DIR)/lib/libcudart.so"
 	FAKE_NVIDIA_RUNTIME_DIR="$(RUNTIME_DIR)" go test -tags=integration -v ./tests/compatibility
 
 docker-integration: runtime
