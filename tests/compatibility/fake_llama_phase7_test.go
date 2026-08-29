@@ -3,18 +3,14 @@
 package compatibility
 
 import (
-	"bytes"
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"os"
 	"os/exec"
-	"strconv"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 
@@ -29,50 +25,32 @@ func TestPhase7FakeLlamaServerLifecycle(t *testing.T) {
 	cfg := compose(t, catalog, config.Spec{Devices: []config.DeviceRequest{{Profile: "rtx4090-24gb"}}})
 	bundle := requireBundle(t)
 	configPath, overridesPath := writeConfig(t, cfg)
-	port := freeTCPPort(t)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, bundle.FakeLlamaServer(),
-		"--model", "/models/fake-test.gguf",
-		"--host", "127.0.0.1",
-		"--port", strconv.Itoa(port),
+	server := startFakeLlamaWithArgs(t, ctx, bundle, configPath, overridesPath,
 		"--fake-vram", "64MiB",
 		"--fake-response", "phase seven fake response",
 		"--threads", "8",
 		"--gpu-layers", "99",
 	)
-	cmd.Env = bundle.Environment(os.Environ(), configPath, overridesPath)
-	var logs bytes.Buffer
-	cmd.Stdout = &logs
-	cmd.Stderr = &logs
-	if err := cmd.Start(); err != nil {
-		t.Fatal(err)
-	}
-	stopped := false
-	defer func() {
-		if !stopped && cmd.Process != nil {
-			_ = cmd.Process.Kill()
-			_, _ = cmd.Process.Wait()
-		}
-	}()
-
-	base := fmt.Sprintf("http://127.0.0.1:%d", port)
-	waitPhase7Ready(t, ctx, base, &logs)
+	defer stopFakeLlamaBestEffort(server)
+	pid := server.cmd.Process.Pid
+	base := server.base
 
 	rows := queryGPUs(t, bundle, configPath, overridesPath, false)
 	if got := strings.TrimSpace(rows[0][4]); got != "64" {
-		t.Fatalf("memory.used=%q want 64; row=%v logs=%s", got, rows[0], logs.String())
+		t.Fatalf("memory.used=%q want 64; row=%v logs=%s", got, rows[0], server.logs.String())
 	}
 	processes := queryComputeApps(t, bundle, configPath, overridesPath)
-	if len(processes) != 1 || strings.TrimSpace(processes[0][0]) != strconv.Itoa(cmd.Process.Pid) || strings.TrimSpace(processes[0][3]) != "fake-llama-server" {
-		t.Fatalf("compute processes=%v pid=%d logs=%s", processes, cmd.Process.Pid, logs.String())
+	if len(processes) != 1 || strings.TrimSpace(processes[0][0]) != strconv.Itoa(pid) || strings.TrimSpace(processes[0][3]) != "fake-llama-server" {
+		t.Fatalf("compute processes=%v pid=%d logs=%s", processes, pid, server.logs.String())
 	}
 	out, err := runSMI(bundle, configPath, overridesPath, "pmon", "-c", "1", "-s", "u")
 	if err != nil {
 		t.Fatalf("pmon: %v\n%s", err, out)
 	}
-	if got := parseManagerPMon(t, out)[processKey{pid: cmd.Process.Pid, deviceID: "CUDA0"}]; got != 35 {
+	if got := parseManagerPMon(t, out)[processKey{pid: pid, deviceID: "CUDA0"}]; got != 35 {
 		t.Fatalf("pmon utilization=%v want 35\n%s", got, out)
 	}
 
@@ -96,24 +74,10 @@ func TestPhase7FakeLlamaServerLifecycle(t *testing.T) {
 		t.Fatalf("stream missing completion marker: %s", body)
 	}
 
-	if err := cmd.Process.Signal(syscall.SIGTERM); err != nil {
-		t.Fatal(err)
-	}
-	waitDone := make(chan error, 1)
-	go func() { waitDone <- cmd.Wait() }()
-	select {
-	case err := <-waitDone:
-		if err != nil {
-			t.Fatalf("fake llama-server exit: %v logs=%s", err, logs.String())
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatalf("fake llama-server did not exit after SIGTERM; logs=%s", logs.String())
-	}
-	stopped = true
-
+	stopFakeLlama(t, server)
 	rows = queryGPUs(t, bundle, configPath, overridesPath, false)
 	if got := strings.TrimSpace(rows[0][4]); got != "0" {
-		t.Fatalf("memory.used after stop=%q want 0; row=%v logs=%s", got, rows[0], logs.String())
+		t.Fatalf("memory.used after stop=%q want 0; row=%v logs=%s", got, rows[0], server.logs.String())
 	}
 	if processes := queryComputeApps(t, bundle, configPath, overridesPath); len(processes) != 0 {
 		t.Fatalf("fake process remained after stop: %v", processes)
@@ -127,14 +91,13 @@ func TestPhase7FakeLlamaServerInjectedOOM(t *testing.T) {
 	cfg := compose(t, catalog, config.Spec{Devices: []config.DeviceRequest{{Profile: "rtx4060ti-16gb"}}})
 	bundle := requireBundle(t)
 	configPath, overridesPath := writeConfig(t, cfg)
-	port := freeTCPPort(t)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, bundle.FakeLlamaServer(),
 		"--model", "/models/fake-oom.gguf",
 		"--host", "127.0.0.1",
-		"--port", strconv.Itoa(port),
+		"--port", "0",
 		"--fake-vram", "1GiB",
 		"--fake-cuda-oom",
 	)
@@ -158,8 +121,9 @@ func TestPhase7FakeLlamaServerInjectedOOM(t *testing.T) {
 	}
 }
 
-// freeTCPPort reserves an ephemeral loopback port long enough to discover its number.
-func freeTCPPort(t *testing.T) int {
+// pickFreeTCPPort returns a candidate loopback port. The listener is closed
+// before return, so callers must tolerate a later bind race.
+func pickFreeTCPPort(t *testing.T) int {
 	t.Helper()
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -167,27 +131,4 @@ func freeTCPPort(t *testing.T) int {
 	}
 	defer listener.Close()
 	return listener.Addr().(*net.TCPAddr).Port
-}
-
-// waitPhase7Ready polls the manager-facing health endpoint until it returns 2xx.
-func waitPhase7Ready(t *testing.T, ctx context.Context, base string, logs *bytes.Buffer) {
-	t.Helper()
-	client := &http.Client{Timeout: time.Second}
-	ticker := time.NewTicker(25 * time.Millisecond)
-	defer ticker.Stop()
-	for {
-		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, base+"/health", nil)
-		resp, err := client.Do(req)
-		if err == nil {
-			_ = resp.Body.Close()
-			if resp.StatusCode == http.StatusOK {
-				return
-			}
-		}
-		select {
-		case <-ctx.Done():
-			t.Fatalf("fake llama-server readiness timed out: %v logs=%s", ctx.Err(), logs.String())
-		case <-ticker.C:
-		}
-	}
 }
