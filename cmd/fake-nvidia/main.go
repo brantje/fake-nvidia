@@ -64,6 +64,10 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return err
 	case "render":
 		return runRender(catalog, args[1:], stdout, stderr)
+	case "up":
+		return runUp(catalog, args[1:], stdout, stderr)
+	case "down":
+		return runDown(args[1:], stdout, stderr)
 	case "ctl":
 		return controlcli.Run(context.Background(), args[1:], os.Stdin, stdout, stderr)
 	case "help", "-h", "--help":
@@ -188,7 +192,7 @@ func parseDevice(raw string) (config.DeviceRequest, error) {
 
 // usage implements the corresponding fake-nvidia operation.
 func usage(w io.Writer) error {
-	_, err := fmt.Fprint(w, `fake-nvidia profile/configuration and control tool
+	_, err := fmt.Fprint(w, `fake-nvidia profile/configuration, injection, and control tool
 
 usage:
   fake-nvidia profiles
@@ -198,10 +202,15 @@ usage:
   fake-nvidia render --device <profile[@MiB]> [--device ...]
   fake-nvidia render --topology <id>
   fake-nvidia render --spec <config.json>
+  fake-nvidia up --profile <id> [--gpus N] [--vram-mib MiB]
+  fake-nvidia up --topology <id>
+  fake-nvidia down [--root .fake-nvidia]
   fake-nvidia ctl <control command> [args...]
 
-render writes upstream Mock NVML YAML. ctl composes the upstream nvml-mock-ctl
-override mechanism and is also available as the standalone fake-nvidia-ctl binary.
+render writes upstream Mock NVML YAML. up prepares an isolated runtime/state root for
+Docker/Compose injection, and down removes only fake-nvidia-owned injection roots.
+ctl composes the upstream nvml-mock-ctl override mechanism and is also available
+as the standalone fake-nvidia-ctl binary.
 `)
 	return err
 }
