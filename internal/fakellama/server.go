@@ -31,7 +31,7 @@ type Server struct {
 	registered atomic.Bool
 	addrMu     sync.RWMutex
 	addr       string
-	release    sync.Once
+	releaseMu  sync.Mutex
 }
 
 // NewServer constructs a fake llama-server process model for pid.
@@ -104,10 +104,12 @@ func (s *Server) Run(ctx context.Context) error {
 	}()
 	defer func() {
 		s.ready.Store(false)
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		defer cancel()
+		shutdownCtx, cancelShutdown := context.WithTimeout(context.Background(), 2*time.Second)
 		_ = httpServer.Shutdown(shutdownCtx)
-		_ = s.ReleaseResources(context.Background())
+		cancelShutdown()
+		releaseCtx, cancelRelease := context.WithTimeout(context.Background(), 5*time.Second)
+		_ = s.ReleaseResources(releaseCtx)
+		cancelRelease()
 	}()
 
 	fmt.Fprintf(s.stdout, "fake-llama-server: loading model %s\n", s.cfg.ModelPath)
@@ -192,18 +194,23 @@ func (s *Server) Run(ctx context.Context) error {
 }
 
 // ReleaseResources removes this PID from all selected fake GPUs. It is safe to
-// call more than once, including before an injected hanging shutdown.
+// call more than once. A failed release remains retryable so transient control
+// failures do not permanently hide stale simulated process state.
 func (s *Server) ReleaseResources(ctx context.Context) error {
-	if s == nil || s.registry == nil || !s.registered.Load() {
+	if s == nil || s.registry == nil {
 		return nil
 	}
-	var err error
-	s.release.Do(func() {
-		s.ready.Store(false)
-		err = s.registry.Release(ctx, s.pid, s.cfg.Targets)
-		s.registered.Store(false)
-	})
-	return err
+	s.releaseMu.Lock()
+	defer s.releaseMu.Unlock()
+	if !s.registered.Load() {
+		return nil
+	}
+	s.ready.Store(false)
+	if err := s.registry.Release(ctx, s.pid, s.cfg.Targets); err != nil {
+		return err
+	}
+	s.registered.Store(false)
+	return nil
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
@@ -246,7 +253,7 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		model = filepath.Base(s.cfg.ModelPath)
 	}
 	if request.Stream {
-		s.writeChatStream(w, model)
+		s.writeChatStream(w, r, model)
 		return
 	}
 	completionTokens := len(strings.Fields(s.cfg.Response))
@@ -263,7 +270,7 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (s *Server) writeChatStream(w http.ResponseWriter, model string) {
+func (s *Server) writeChatStream(w http.ResponseWriter, r *http.Request, model string) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": map[string]any{"message": "streaming unsupported"}})
@@ -283,10 +290,20 @@ func (s *Server) writeChatStream(w http.ResponseWriter, model string) {
 			"choices": []map[string]any{{"index": 0, "delta": map[string]any{"content": content}, "finish_reason": nil}},
 		}
 		data, _ := json.Marshal(chunk)
-		fmt.Fprintf(w, "data: %s\n\n", data)
+		if _, err := fmt.Fprintf(w, "data: %s\n\n", data); err != nil {
+			return
+		}
 		flusher.Flush()
 		if s.cfg.TokenDelay > 0 {
-			time.Sleep(s.cfg.TokenDelay)
+			timer := time.NewTimer(s.cfg.TokenDelay)
+			select {
+			case <-r.Context().Done():
+				if !timer.Stop() {
+					<-timer.C
+				}
+				return
+			case <-timer.C:
+			}
 		}
 	}
 	final := map[string]any{
@@ -294,7 +311,9 @@ func (s *Server) writeChatStream(w http.ResponseWriter, model string) {
 		"choices": []map[string]any{{"index": 0, "delta": map[string]any{}, "finish_reason": "stop"}},
 	}
 	data, _ := json.Marshal(final)
-	fmt.Fprintf(w, "data: %s\n\ndata: [DONE]\n\n", data)
+	if _, err := fmt.Fprintf(w, "data: %s\n\ndata: [DONE]\n\n", data); err != nil {
+		return
+	}
 	flusher.Flush()
 }
 
