@@ -28,6 +28,12 @@ Open `http://localhost:8080`.
 
 The example persists LlamaCPP-Manager configuration and model files under `examples/llamacpp-manager/data/` by default.
 
+## Stop it
+
+```bash
+docker compose -f examples/llamacpp-manager/docker-compose.yaml down
+```
+
 ## Change the fake GPUs
 
 Recreate the fake-nvidia root with another profile/count, for example four 24 GiB RTX 4090s:
