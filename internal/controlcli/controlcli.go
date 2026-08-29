@@ -237,10 +237,15 @@ func (r *Runtime) upsertProcess(ctx context.Context, mode string, args []string)
 	if *pid == 0 || uint64(*pid) > uint64(^uint32(0)) || *gpu == "" {
 		return errors.New("--pid and --gpu are required")
 	}
+	if *processType != "C" && *processType != "G" {
+		return errors.New("process type must be C or G")
+	}
 	device, err := r.Manager.Observer.Device(ctx, *gpu)
 	if err != nil {
 		return err
 	}
+	before := device
+	before.Processes = append([]control.Process(nil), device.Processes...)
 	index := -1
 	for i := range device.Processes {
 		if device.Processes[i].PID == uint32(*pid) {
@@ -301,7 +306,7 @@ func (r *Runtime) upsertProcess(ctx context.Context, mode string, args []string)
 	} else {
 		device.Processes[index] = process
 	}
-	return r.Manager.ReplaceProcessesFromState(ctx, *gpu, device, device.Processes)
+	return r.Manager.ReplaceProcessesFromState(ctx, *gpu, before, device.Processes)
 }
 
 func (r *Runtime) removeProcess(ctx context.Context, args []string) error {
