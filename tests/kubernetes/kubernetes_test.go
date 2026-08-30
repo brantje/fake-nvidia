@@ -46,7 +46,14 @@ func TestPhase9Kind(t *testing.T) {
 		t.Fatal("Kind cluster has no nodes")
 	}
 	labeledNodes := runCommand(t, root, nil, 30*time.Second, "kubectl", "get", "nodes", "-l", "fake-nvidia.com/enabled=true", "-o", "name")
-	if !strings.Contains(labeledNodes, "node/"+node) {
+	found := false
+	for _, candidate := range strings.Fields(labeledNodes) {
+		if candidate == "node/"+node {
+			found = true
+			break
+		}
+	}
+	if !found {
 		t.Fatalf("Kind node %s is missing required fake-nvidia.com/enabled=true label", node)
 	}
 
